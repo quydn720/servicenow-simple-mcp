@@ -1,0 +1,5 @@
+fastmcp>=2.0.0
+requests>=2.32.0
+python-dotenv>=1.0.1
+pytest>=8.0.0
+Flask>=3.0.0

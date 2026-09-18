@@ -5,9 +5,12 @@ from urllib.parse import urlparse
 
 import requests
 
+from app.auth.factory import create_auth_provider
+from app.config import Settings
+
 
 class ServiceNowClient:
-    def __init__(self, settings: Any):
+    def __init__(self, settings: Settings):
         self.settings = settings
         instance = self.settings.instance.rstrip("/")
         if not urlparse(instance).scheme:
@@ -20,69 +23,28 @@ class ServiceNowClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
-        self._set_access_token(self.settings.oauth_access_token)
-        if not self.settings.oauth_access_token:
-            self._refresh_access_token()
-
-    def _set_access_token(self, access_token: str) -> None:
-        if access_token:
-            self.session.headers["Authorization"] = f"Bearer {access_token}"
-
-    def _refresh_access_token(self) -> None:
-        response = requests.post(
-            f"{self.instance_url}/oauth_token.do",
-            data={
-                "grant_type": "refresh_token",
-                "client_id": self.settings.oauth_client_id,
-                "client_secret": self.settings.oauth_client_secret,
-                "refresh_token": self.settings.oauth_refresh_token,
-            },
-            headers={"Accept": "application/json"},
-            timeout=30,
-        )
-
-        if response.status_code >= 400:
-            try:
-                error_body = response.json()
-            except ValueError:
-                error_body = {"message": response.text}
-            raise RuntimeError(
-                f"ServiceNow OAuth token request failed: {response.status_code} - {error_body}"
-            )
-
-        try:
-            access_token = response.json().get("access_token", "")
-        except ValueError as exc:
-            raise RuntimeError("ServiceNow OAuth token response was not JSON") from exc
-
-        if not access_token:
-            raise RuntimeError("ServiceNow OAuth response did not include an access_token")
-        self._set_access_token(access_token)
+        create_auth_provider(settings).authenticate(self.session)
 
     def _request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
-        response = self.session.request(
-            method=method,
-            url=url,
-            params=params,
-            json=json_body,
-            timeout=30,
-        )
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json_body,
+                timeout=30,
+            )
+        except requests.RequestException:
+            raise RuntimeError("ServiceNow request failed; check connectivity") from None
 
         if response.status_code >= 400:
-            try:
-                error_body = response.json()
-            except ValueError:
-                error_body = {"message": response.text}
-
-            raise RuntimeError(
-                f"ServiceNow request failed: {response.status_code} - {error_body}"
-            )
+            raise RuntimeError(f"ServiceNow request failed (HTTP {response.status_code})")
 
         try:
             return response.json()
-        except ValueError as exc:
-            raise RuntimeError(f"ServiceNow returned non-JSON payload: {response.text}") from exc
+        except ValueError:
+            raise RuntimeError("ServiceNow returned a non-JSON response") from None
 
     def list_records(
         self,

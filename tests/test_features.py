@@ -28,15 +28,22 @@ AGILE_TOOLS = {
 }
 
 
+SERVICE_DESK_TOOLS = {
+    'create_incident', 'create_task', 'get_incident', 'list_incidents',
+    'list_knowledge_articles', 'update_incident_journal', 'get_change_status',
+    'confirm_pending_write',
+}
+
+
 def test_default_discovery():
     server = create_server()
-    assert set(tools(server)) == {'list_records', 'get_record', 'create_task', 'create_incident', 'confirm_pending_write'} | AGILE_TOOLS
+    assert set(tools(server)) == {'list_records', 'get_record'} | SERVICE_DESK_TOOLS | AGILE_TOOLS
     assert {p.name for p in asyncio.run(server.list_prompts())} == {'get_incident'}
 
 
 @pytest.mark.parametrize('features, expected', [
     (' common, common ', {'list_records', 'get_record'}),
-    ('service_desk', {'create_task', 'create_incident', 'confirm_pending_write'}),
+    ('service_desk', SERVICE_DESK_TOOLS),
     ('product_owner', AGILE_TOOLS | {'confirm_pending_write'}),
     ('developer', set()),
 ])
@@ -56,22 +63,22 @@ def test_invalid_features(monkeypatch, features):
 
 def test_migrated_payloads_and_results():
     client = Mock()
-    client.create_record.return_value = {'sys_id': 'created'}
-    client.list_records.return_value = [{'sys_id': 'existing'}]
-    client.get_record.return_value = {'sys_id': 'existing'}
+    client.create_record.return_value = {'sys_id': 'a' * 32}
+    client.list_records.return_value = [{'sys_id': 'b' * 32}]
+    client.get_record.return_value = {'sys_id': 'b' * 32}
     factory = Mock(return_value=client)
     registered = tools(create_server(factory))
-    result = registered['create_task'].fn(' Task ', description=' Details ', assignment_group=' group ')
-    client.create_record.assert_called_with('task', {'short_description': 'Task', 'description': 'Details', 'priority': '3', 'assignment_group': 'group'})
-    assert result == {'table': 'task', 'record': {'sys_id': 'created'}}
-    assert registered['create_incident'].fn(' Incident ') == {'table': 'incident', 'record': {'sys_id': 'created'}}
+    result = registered['create_task'].fn(' Task ', description=' Details ', assignment_group='c' * 32)
+    client.create_record.assert_called_with('task', {'short_description': 'Task', 'description': 'Details', 'priority': '3', 'assignment_group': 'c' * 32})
+    assert result == {'table': 'task', 'record': {'sys_id': 'a' * 32}}
+    assert registered['create_incident'].fn(' Incident ') == {'table': 'incident', 'record': {'sys_id': 'a' * 32}}
     client.create_record.assert_called_with('incident', {'short_description': 'Incident'})
-    assert registered['create_agile_story'].fn(' Story ', ' Description ', ' Criteria ', 0, '2') == {'table': 'rm_story', 'record': {'sys_id': 'created'}}
+    assert registered['create_agile_story'].fn(' Story ', ' Description ', ' Criteria ', 0, '2') == {'table': 'rm_story', 'record': {'sys_id': 'a' * 32}}
     client.create_record.assert_called_with('rm_story', {'short_description': 'Story', 'description': 'Description', 'acceptance_criteria': 'Criteria', 'story_points': 0, 'priority': '2'})
-    assert registered['list_records'].fn('incident', 'active=true', ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'existing'}]}
-    client.list_records.assert_called_with(table='incident', query='active=true', fields=['sys_id'], limit=2)
-    assert registered['get_record'].fn('incident', 'existing', ['sys_id']) == {'table': 'incident', 'sys_id': 'existing', 'record': {'sys_id': 'existing'}}
-    client.get_record.assert_called_with(table='incident', sys_id='existing', fields=['sys_id'])
+    assert registered['list_records'].fn('incident', None, ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'b' * 32}]}
+    client.list_records.assert_called_with(table='incident', query=None, fields=['sys_id'], limit=2)
+    assert registered['get_record'].fn('incident', 'b' * 32, ['sys_id']) == {'table': 'incident', 'sys_id': 'b' * 32, 'record': {'sys_id': 'b' * 32}}
+    client.get_record.assert_called_with(table='incident', sys_id='b' * 32, fields=['sys_id'])
     assert factory.call_count == 5
 
 
@@ -85,9 +92,7 @@ def test_migrated_payloads_and_results():
 def test_validation_before_client_creation(name, args):
     factory = Mock(side_effect=AssertionError('Client created before validation'))
     registered = tools(create_server(factory))
-    if name.startswith("create_"):
-        assert registered[name].fn(*args)["status"] == "error"
-    else:
-        with pytest.raises(ValueError):
-            registered[name].fn(*args)
+    result = registered[name].fn(*args)
+    assert result["code"] == "VALIDATION_ERROR"
+    assert result["outcome"] == "not_attempted"
     factory.assert_not_called()

@@ -98,7 +98,7 @@ def test_empty_and_plain_list_responses(client, body, expected):
 def test_empty_wrapped_id_is_not_a_successful_write(client, operation):
     body = {"result": {"sys_id": {"display_value": "", "value": ""}}}
     client.session.request.return_value = Mock(status_code=200, json=Mock(return_value=body))
-    with pytest.raises(RuntimeError, match="no valid record"):
+    with pytest.raises(RuntimeError, match="ServiceNow could not complete"):
         if operation == "create":
             client.create_record("incident", {"short_description": "Printer problem"})
         else:

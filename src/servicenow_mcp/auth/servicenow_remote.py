@@ -9,6 +9,7 @@ from fastmcp.server.dependencies import get_access_token
 from servicenow_mcp.config.local import Settings
 from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.client import ServiceNowClient
+from servicenow_mcp.errors import OperationError
 
 
 class ServiceNowTokenVerifier(TokenVerifier):
@@ -27,7 +28,10 @@ class ServiceNowTokenVerifier(TokenVerifier):
         async def verify(client):
             response = await client.get(
                 self.settings.instance + self.settings.identity_path,
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
                 follow_redirects=False,
                 timeout=15,
             )
@@ -37,12 +41,21 @@ class ServiceNowTokenVerifier(TokenVerifier):
             if not isinstance(user, dict):
                 return None
             subject = user.get("sys_id")
-            if not isinstance(subject, str) or not re.fullmatch(r"[0-9a-f]{32}", subject):
+            if not isinstance(subject, str) or not re.fullmatch(
+                r"[0-9a-f]{32}", subject
+            ):
                 return None
             return AccessToken(
-                token=token, client_id=self.settings.client_id, scopes=[], subject=subject,
-                claims={"sub": subject, "servicenow_instance": self.settings.instance,
-                        "provider": "servicenow", "user_name": user.get("user_name", "")},
+                token=token,
+                client_id=self.settings.client_id,
+                scopes=[],
+                subject=subject,
+                claims={
+                    "sub": subject,
+                    "servicenow_instance": self.settings.instance,
+                    "provider": "servicenow",
+                    "user_name": user.get("user_name", ""),
+                },
             )
 
         try:
@@ -57,23 +70,33 @@ class ServiceNowTokenVerifier(TokenVerifier):
 class ReadOnlyServiceNowClient(ServiceNowClient):
     def _request(self, method, path, params=None, json_body=None):
         if method != "GET" or not re.fullmatch(
-            r"/table/(incident|task|sc_task|problem|change_request)(/[0-9a-f]{32})?", path,
+            r"/table/(incident|task|sc_task|problem|change_request)(/[0-9a-f]{32})?",
+            path,
         ):
-            raise ValueError("Remote POC permits only reads of approved tables and valid record IDs")
+            raise OperationError("PERMISSION_DENIED")
         return super()._request(method, path, params, json_body)
 
 
 def user_client_factory(settings: RemoteSettings):
     def current_client():
         token = get_access_token()
-        if (token is None or not token.token or not token.subject
-                or token.claims.get("provider") != "servicenow"
-                or token.claims.get("servicenow_instance") != settings.instance):
-            raise RuntimeError("An authenticated ServiceNow user is required")
+        if (
+            token is None
+            or not token.token
+            or not token.subject
+            or token.claims.get("provider") != "servicenow"
+            or token.claims.get("servicenow_instance") != settings.instance
+        ):
+            raise OperationError("AUTHENTICATION_REQUIRED")
         # Explicit settings: shared .env credentials can never be used as fallback.
-        return ReadOnlyServiceNowClient(Settings(
-            instance=settings.instance, auth_type="oauth", oauth_access_token=token.token,
-        ))
+        return ReadOnlyServiceNowClient(
+            Settings(
+                instance=settings.instance,
+                auth_type="oauth",
+                oauth_access_token=token.token,
+            )
+        )
+
     return current_client
 
 

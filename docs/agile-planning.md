@@ -23,8 +23,8 @@ existence, ACLs, and business rules.
 Example MCP tool arguments (replace example IDs with lookup results):
 
 ```text
-list_agile_products(query="nameLIKEPortal")
-list_agile_epics(query="product=0123456789abcdef0123456789abcdef")
+list_agile_products(fields=["sys_id", "name"], limit=100)
+list_agile_epics(fields=["sys_id", "short_description", "product"], limit=100)
 create_agile_story(
     short_description="Allow customers to track requests",
     product="0123456789abcdef0123456789abcdef",
@@ -34,15 +34,23 @@ create_agile_story(
 update_agile_story(sys_id="11111111111111111111111111111111", epic="")
 ```
 
-Get/update tools require a record sys_id. List tools accept an optional encoded
-`query`, `fields`, and `limit` (default 10, clamped by the client to 1–100).
+Get/update tools require a record sys_id. List tools accept `fields` and `limit`
+(default 10, validated as an integer from 1–100). The legacy `query` argument MUST be
+omitted or null; any string returns a `RAW_QUERY_PROHIBITED` tool error before
+client creation. Structured filters and owner-approved exceptions are not
+implemented. Lists are unfiltered and bounded, so they may not contain the
+desired record; use get tools when a sys_id is known.
 Default lookup fields include sys_id and number/short_description for stories
-and epics, and sys_id/name for products. Explicit `fields` overrides the defaults.
+and epics, and sys_id/name for products. Explicit `fields` selects only declared
+fields; `sys_id` is always included. Empty, duplicate, and undeclared field
+selections are rejected. Returned records are projected to the selected fields.
 
 Update fields are optional: omitted or null values leave fields unchanged;
 empty strings clear optional text/reference fields. Blank short descriptions and
-updates with no supplied changes are rejected. Priority is passed through using
-the existing tool behavior. Write tools return previews; confirmed writes return
+updates with no supplied changes are rejected. Priority must be a string code
+from `"1"` to `"5"`. Summaries are limited to 160 characters and description/HTML
+acceptance criteria to 4000 after trimming. See [tool contracts](tool-contracts.md)
+for the implemented bounds and deployment prerequisites. Write tools return previews; confirmed writes return
 `{table, record}`. Gets return
 `{table, sys_id, record}`; lists return `{table, count, records}`. Failed writes
 are not automatically retried.

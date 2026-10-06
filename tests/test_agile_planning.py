@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from servicenow_mcp.servers.stdio import create_server
+from servicenow_mcp.errors import OperationError
 from conftest import reviewed_tools
 
 ID = "0123456789abcdef0123456789abcdef"
@@ -96,11 +97,9 @@ def test_story_clear_epic_and_criteria(agile):
 ])
 def test_invalid_inputs_before_client_creation(agile, name, kwargs):
     tools, _, factory = agile
-    if name.startswith(("create_", "update_")):
-        assert tools[name].fn(**kwargs)["status"] == "error"
-    else:
-        with pytest.raises(ValueError):
-            tools[name].fn(**kwargs)
+    result = tools[name].fn(**kwargs)
+    assert result["code"] == "VALIDATION_ERROR"
+    assert result["outcome"] == "not_attempted"
     factory.assert_not_called()
 
 
@@ -123,8 +122,8 @@ def test_reads(agile, entity, plural, table, display):
     kwargs = client.list_records.call_args.kwargs
     assert kwargs["table"] == table and kwargs["limit"] == 10 and kwargs["query"] is None
     assert {"sys_id", display} <= set(kwargs["fields"])
-    tools[f"list_agile_{plural}"].fn("active=true", ["sys_id"], 150)
-    client.list_records.assert_called_with(table=table, query="active=true", fields=["sys_id"], limit=150)
+    tools[f"list_agile_{plural}"].fn(None, ["sys_id"], 100)
+    client.list_records.assert_called_with(table=table, query=None, fields=["sys_id"], limit=100)
     client.list_records.return_value = []
     assert tools[f"list_agile_{plural}"].fn()["count"] == 0
 
@@ -139,13 +138,11 @@ def test_reads(agile, entity, plural, table, display):
 ])
 def test_errors_propagate_without_retry(agile, name, method, kwargs):
     tools, client, _ = agile
-    error = RuntimeError("ServiceNow request failed (HTTP 403)")
+    error = OperationError("PERMISSION_DENIED", outcome="failed", http_status=403)
     getattr(client, method).side_effect = error
-    if name.startswith(("create_", "update_")):
-        result = tools[name].fn(**kwargs)
-        assert result["status"] == "error" and result["message"] == str(error)
-    else:
-        with pytest.raises(RuntimeError) as caught:
-            tools[name].fn(**kwargs)
-        assert caught.value is error
+    result = tools[name].fn(**kwargs)
+    assert result["code"] == "PERMISSION_DENIED"
+    assert result["http_status"] == 403
+    assert result["retryable"] is False
+    assert result["outcome"] == "failed"
     assert getattr(client, method).call_count == 1

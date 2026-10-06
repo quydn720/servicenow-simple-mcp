@@ -13,7 +13,7 @@ This project is a starter Model Context Protocol (MCP) server for a ServiceNow P
 ## What this starter includes
 
 - Read records from a ServiceNow table
-- List records with a query and limit
+- List records with a limit (caller-supplied raw queries are blocked)
 - Create a task record
 - Basic or OAuth 2.0 authentication via environment variables
 - Configurable tools grouped by feature
@@ -102,6 +102,62 @@ server module does not load credentials or create a server.
    python -m servicenow_mcp.servers.stdio
    ```
 
+## Claude Desktop setup
+
+Install the package into this project's virtual environment before configuring
+Claude Desktop. From the project root, use `uv sync --locked --no-dev`, or:
+
+```bash
+"/Users/quydo/My MCP/.venv/bin/python" -m pip install -e "/Users/quydo/My MCP"
+```
+
+In Claude Desktop, open **Settings → Developer → Edit Config**. The configuration
+file is `~/Library/Application Support/Claude/claude_desktop_config.json` on
+macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows. Add the
+following entry to `mcpServers`, preserving any other servers and settings:
+
+```json
+{
+  "mcpServers": {
+    "servicenow-pdi": {
+      "command": "/Users/quydo/My MCP/.venv/bin/python",
+      "args": ["-m", "servicenow_mcp.servers.stdio"],
+      "env": {
+        "MCP_ENV_FILE": "/Users/quydo/My MCP/.env"
+      }
+    }
+  }
+}
+```
+
+Replace the absolute paths with your project location. Paths containing spaces
+are ordinary JSON strings; do not add shell quotes inside the values. On
+Windows, use `.venv\\Scripts\\python.exe` and escape backslashes in JSON paths
+(for example, `C:\\Projects\\My MCP\\.env`). Keep credentials in the `.env` file
+described in the quick start. The explicit `MCP_ENV_FILE` path lets the server
+find that file when Claude Desktop launches from a different working directory.
+
+If upgrading from the old layout, replace the argument pointing to
+`app/server.py` with the two module arguments above. The `src/` layout requires
+installing the package; pointing directly at `src/servicenow_mcp/servers/stdio.py`
+does not replace that installation.
+
+Save the configuration, fully quit Claude Desktop, and reopen it. Check that
+`servicenow-pdi` connects in Developer settings. If it fails:
+
+- `No module named servicenow_mcp`: install the package using the exact Python
+  interpreter configured in `command`.
+- A missing `app/server.py` error: update the stale launch arguments and restart
+  Claude Desktop.
+- Missing ServiceNow configuration when invoking a tool: check `MCP_ENV_FILE`
+  and the required values in `.env`.
+- For startup errors, inspect `~/Library/Logs/Claude/mcp-server-servicenow-pdi.log`
+  on macOS, or `%APPDATA%\Claude\logs` on Windows.
+
+See the [official MCP desktop connection guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+for configuration and troubleshooting details. This entry runs the local stdio
+server; remote OAuth setup is documented in [the remote guide](docs/remote-auth-poc.md).
+
 ## Local status dashboard
 
 Run the dashboard from the project root:
@@ -127,6 +183,40 @@ This applies to list, get, create, and update responses. The record's own
 `sys_id`, choice codes, and timestamps retain their raw values. Queries and
 write payloads still use reference sys_ids.
 
+### Raw-query security change
+
+`list_records`, `list_agile_stories`, `list_agile_epics`, and
+`list_agile_products` reject every supplied `query` string, including empty
+strings, with a `RAW_QUERY_PROHIBITED` tool error before creating a ServiceNow
+client. This applies to local tools and the remote `list_records` tool.
+The argument is retained for clear rejection of older client calls; omit it or
+pass `null` for unfiltered lists. Existing callers that supply queries must
+change their calls. The service-desk searches accept bounded structured search arguments and build
+queries internally. Generic filters and owner-approved exception execution
+are not implemented, so approval alone cannot enable raw queries. This is a
+security restriction; remaining contract migrations are separate work.
+
+### Typed tool contracts
+
+All 20 local tools (and the two shared remote read tools) publish explicit
+input/output schemas and validate arguments and results. See
+[implemented tool contracts](docs/tool-contracts.md) for field allowlists,
+limits, result variants, and compatibility changes. Existing names and response
+envelopes are retained, but malformed IDs, undeclared fields, invalid priorities,
+oversized text, and limits outside 1–100 are now rejected.
+
+Tool execution failures return a structured standard error with MCP `isError: true`.
+See [error handling and recovery](docs/error-handling.md), especially the migration
+note for clients that previously received write failures as successful MCP calls.
+
+### Service-desk workflows
+
+See the [service-desk tool specifications](docs/service-desk-tools.md) for
+contracts, permissions, search limitations, and examples. Tools are organized
+in `tools/service_desk/incidents.py`, `knowledge.py`, and `changes.py`. Incident
+creation reuses the existing `create_incident`; journal updates prepare an append
+preview and require `confirm_pending_write` after explicit approval.
+
 ## Authentication
 
 See [authentication](docs/authentication.md).
@@ -140,7 +230,7 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | Group | Registered tools and prompts |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `create_incident`, `create_task`, `get_incident` prompt |
+| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
 | `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 
@@ -153,6 +243,10 @@ not change ServiceNow ACLs. The incident prompt references `get_record`, so enab
 ## Architecture and adding tools
 
 See [architecture and adding tools](docs/architecture.md).
+
+Tool authors and reviewers must follow the [MCP tool design standard](docs/mcp-tool-design-standard.md),
+including its contract template and review checklist. The standard documents
+target requirements and current compliance gaps; it does not change runtime behavior.
 
 ## Agile planning
 

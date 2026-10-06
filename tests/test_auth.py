@@ -53,7 +53,7 @@ def test_oauth_failures_sanitized(monkeypatch, response):
 
 def test_network_failure_sanitized(monkeypatch):
     monkeypatch.setattr(requests, 'post', Mock(side_effect=requests.ConnectionError('secret')))
-    with pytest.raises(RuntimeError, match='check connectivity') as error:
+    with pytest.raises(RuntimeError, match='Check connectivity') as error:
         ServiceNowClient(Settings('example.test', 'id', 'secret', 'refresh'))
     assert error.value.__suppress_context__
 

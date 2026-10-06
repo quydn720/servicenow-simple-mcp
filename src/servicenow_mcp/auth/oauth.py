@@ -1,5 +1,6 @@
 import requests
 from servicenow_mcp.config.local import Settings
+from servicenow_mcp.errors import OperationError
 
 
 class OAuthProvider:
@@ -16,22 +17,34 @@ class OAuthProvider:
             try:
                 response = requests.post(
                     f"{instance}/oauth_token.do",
-                    data={"grant_type": "refresh_token",
-                          "client_id": settings.oauth_client_id,
-                          "client_secret": settings.oauth_client_secret,
-                          "refresh_token": settings.oauth_refresh_token},
-                    headers={"Accept": "application/json"}, timeout=30,
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": settings.oauth_client_id,
+                        "client_secret": settings.oauth_client_secret,
+                        "refresh_token": settings.oauth_refresh_token,
+                    },
+                    headers={"Accept": "application/json"},
+                    timeout=30,
                 )
+            except requests.Timeout:
+                raise OperationError("TIMEOUT", retryable=True) from None
             except requests.RequestException:
-                raise RuntimeError("ServiceNow OAuth token request failed; check connectivity") from None
+                raise OperationError("UPSTREAM_ERROR", retryable=True) from None
             if response.status_code >= 400:
-                raise RuntimeError(f"ServiceNow OAuth token request failed (HTTP {response.status_code})")
+                raise OperationError(
+                    "AUTHENTICATION_REQUIRED"
+                    if response.status_code < 500 and response.status_code != 429
+                    else "UPSTREAM_ERROR",
+                    retryable=response.status_code >= 500
+                    or response.status_code == 429,
+                    http_status=response.status_code,
+                )
             try:
                 data = response.json()
             except ValueError:
-                raise RuntimeError("ServiceNow OAuth token response was not JSON") from None
+                raise OperationError("UPSTREAM_ERROR") from None
             token = data.get("access_token") if isinstance(data, dict) else None
         if not isinstance(token, str) or not token.strip():
-            raise RuntimeError("ServiceNow OAuth response did not include an access_token")
+            raise OperationError("AUTHENTICATION_REQUIRED")
         session.auth = None
         session.headers["Authorization"] = f"Bearer {token}"

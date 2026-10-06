@@ -1,38 +1,67 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.errors import OperationError
+from servicenow_mcp.tools.contracts import (
+    CommonFields,
+    Limit,
+    RawQuery,
+    READ_RESULTS,
+    SysId,
+    Table,
+    COMMON_FIELDS,
+    contract_tool,
+    project_record,
+    project_records,
+    select_fields,
+)
+from servicenow_mcp.tools.query_policy import reject_raw_query
+from servicenow_mcp.tools.descriptions import read_description
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
-    @mcp.tool()
-    def list_records(table: str, query: Optional[str] = None, fields: Optional[List[str]] = None, limit: int = 10) -> dict:
-        """List records from a ServiceNow table with display names for reference fields. Restrict to known tables and safe fieldsets in production."""
-        if not table or not table.strip():
-            raise ValueError("The table name is required.")
-    
-        allowed_tables = {"incident", "task", "sc_task", "problem", "change_request"}
-        if table.lower() not in allowed_tables:
-            raise ValueError(f"Table '{table}' is not allowed in this starter configuration.")
-    
-        client = client_factory()
-        records = client.list_records(table=table, query=query, fields=fields, limit=limit)
+    @contract_tool(
+        mcp,
+        READ_RESULTS["common", "list"],
+        description=read_description(
+            "incident, task, sc_task, problem, change_request",
+            COMMON_FIELDS,
+            collection=True,
+        ),
+    )
+    def list_records(
+        table: Table,
+        query: RawQuery = None,
+        fields: CommonFields | None = None,
+        limit: Limit = 10,
+    ) -> dict:
+        reject_raw_query(query)
+        selected = select_fields(fields, COMMON_FIELDS)
+        records = client_factory().list_records(
+            table=table, query=None, fields=selected, limit=limit
+        )
+        records = project_records(records, table, selected, limit)
         return {"table": table, "count": len(records), "records": records}
 
-    @mcp.tool()
-    def get_record(table: str, sys_id: str, fields: Optional[List[str]] = None) -> dict:
-        """Fetch a single ServiceNow record by sys_id, with display names for reference fields."""
-        if not table or not table.strip():
-            raise ValueError("The table name is required.")
-        if not sys_id or not sys_id.strip():
-            raise ValueError("The sys_id is required.")
-    
-        allowed_tables = {"incident", "task", "sc_task", "problem", "change_request"}
-        if table.lower() not in allowed_tables:
-            raise ValueError(f"Table '{table}' is not allowed in this starter configuration.")
-    
-        client = client_factory()
-        record = client.get_record(table=table, sys_id=sys_id, fields=fields)
+    @contract_tool(
+        mcp,
+        READ_RESULTS["common", "get"],
+        description=read_description(
+            "incident, task, sc_task, problem, change_request",
+            COMMON_FIELDS,
+            collection=False,
+        ),
+    )
+    def get_record(
+        table: Table, sys_id: SysId, fields: CommonFields | None = None
+    ) -> dict:
+        selected = select_fields(fields, COMMON_FIELDS)
+        record = project_record(
+            client_factory().get_record(table=table, sys_id=sys_id, fields=selected),
+            table,
+            selected,
+        )
+        if record["sys_id"].lower() != sys_id.lower():
+            raise OperationError("UPSTREAM_ERROR", outcome="failed")
         return {"table": table, "sys_id": sys_id, "record": record}

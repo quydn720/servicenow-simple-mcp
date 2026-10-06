@@ -9,6 +9,7 @@ from fastmcp import Client
 from servicenow_mcp.config.local import Settings
 from servicenow_mcp.servers.stdio import create_server
 from servicenow_mcp.client import ServiceNowClient
+from servicenow_mcp.errors import OperationError
 from servicenow_mcp.tools import write_review
 
 ID = '0123456789abcdef0123456789abcdef'
@@ -89,9 +90,9 @@ def test_stateless_connection_returns_actionable_error(server):
     mcp, _, _, factory, _ = server
     async def run():
         async with Client(mcp, mode='2026-07-28') as connection:
-            result = await connection.call_tool('create_incident', {'short_description': 'Incident'})
-            assert result.data['status'] == 'error'
-            assert "mode='legacy'" in result.data['message']
+            result = await connection.call_tool('create_incident', {'short_description': 'Incident'}, raise_on_error=False)
+            assert result.structured_content['status'] == 'error'
+            assert "mode='legacy'" in result.structured_content['message']
     asyncio.run(run())
     factory.assert_not_called()
 
@@ -103,7 +104,7 @@ def test_preview_is_single_use(server, approved):
     kwargs = {'preview_id': pending['preview_id'], 'confirmed': approved}
     invoke(tools['confirm_pending_write'], ctx, **kwargs)
     again = invoke(tools['confirm_pending_write'], ctx, **kwargs)
-    assert again['status'] == 'error' and 'already used' in again['message']
+    assert again['code'] == 'CONFIRMATION_INVALID' and 'already used' in again['message']
     assert factory.call_count == int(approved)
     assert client.create_record.call_count == int(approved)
 
@@ -151,14 +152,15 @@ def test_preview_cannot_be_modified_after_review(server):
 
 def test_validation_and_authentication_errors(server):
     _, tools, _, factory, ctx = server
-    result = invoke(tools['create_incident'], ctx, short_description=' ')
-    assert result == {'status': 'error', 'message': 'short_description is required.'}
+    invalid = invoke(tools['create_incident'], ctx, short_description=' ')
+    assert invalid['code'] == 'VALIDATION_ERROR'
     factory.assert_not_called()
     pending = invoke(tools['create_incident'], ctx, short_description='Incident')
-    factory.side_effect = RuntimeError('Missing configuration: SERVICENOW_INSTANCE')
+    factory.side_effect = OperationError('AUTHENTICATION_REQUIRED')
     result = invoke(tools['confirm_pending_write'], ctx, preview_id=pending['preview_id'], confirmed=True)
     assert result['status'] == 'error'
-    assert result['message'] == 'Missing configuration: SERVICENOW_INSTANCE'
+    assert result['code'] == 'AUTHENTICATION_REQUIRED'
+    assert result['outcome'] == 'not_attempted'
 
 
 def test_concurrent_confirmation_inserts_only_once(server):
@@ -184,28 +186,31 @@ def test_pending_preview_capacity(server, monkeypatch):
     factory.assert_not_called()
 
 
-@pytest.mark.parametrize('body,status,message', [
-    ({'error': {'message': 'Insert denied', 'detail': 'ACL prevents this operation'}}, 403, r'HTTP 403\): Insert denied; ACL prevents this operation'),
-    ({'error': {'message': 'Business rule aborted insert'}}, 200, 'Business rule aborted insert'),
-    ({'result': {}}, 200, 'no valid record'),
-    ([], 200, 'invalid JSON'),
+@pytest.mark.parametrize('body,status,code,outcome', [
+    ({'error': {'message': 'secret', 'detail': 'secret'}}, 403, 'PERMISSION_DENIED', 'failed'),
+    ({'error': {'message': 'secret'}}, 200, 'UPSTREAM_ERROR', 'unknown'),
+    ({'result': {}}, 200, 'UPSTREAM_ERROR', 'unknown'),
+    ([], 200, 'UPSTREAM_ERROR', 'unknown'),
 ])
-def test_servicenow_error_messages(body, status, message):
+def test_servicenow_error_messages(body, status, code, outcome):
     client = ServiceNowClient(Settings('example.test', oauth_access_token='token'))
     client.session.request = Mock(return_value=Mock(status_code=status, json=Mock(return_value=body)))
-    with pytest.raises(RuntimeError, match=message):
+    with pytest.raises(OperationError) as caught:
         client.create_record('incident', {'short_description': 'Incident'})
+    assert caught.value.code == code
+    assert caught.value.outcome == outcome
+    assert 'secret' not in str(caught.value)
     client.session.request.assert_called_once()
-
 
 
 def test_write_timeout_is_not_retried(server):
     _, tools, client, _, ctx = server
-    client.create_record.side_effect = RuntimeError('ServiceNow request failed; check connectivity')
+    client.create_record.side_effect = OperationError('TIMEOUT', outcome='unknown')
     pending = invoke(tools['create_incident'], ctx, short_description='Incident')
     kwargs = {'preview_id': pending['preview_id'], 'confirmed': True}
     result = invoke(tools['confirm_pending_write'], ctx, **kwargs)
-    assert result['status'] == 'error' and 'check connectivity' in result['message']
+    assert result['code'] == 'TIMEOUT' and result['outcome'] == 'unknown'
+    assert result['retryable'] is False
     assert 'may already have committed' in result['retry_guidance']
     assert invoke(tools['confirm_pending_write'], ctx, **kwargs)['status'] == 'error'
     client.create_record.assert_called_once()

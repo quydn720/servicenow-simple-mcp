@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp==4.0.5",
+    "pydantic>=2.12,<3",
     "requests>=2.32.0,<3",
     "python-dotenv>=1.0.1,<2",
 ]
@@ -23,7 +24,7 @@ remote = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "ruff>=0.15,<0.16"]
+dev = ["pytest>=8,<10", "ruff>=0.15,<0.16", "jsonschema>=4.26,<5"]
 
 [project.scripts]
 servicenow-mcp = "servicenow_mcp.servers.stdio:main"

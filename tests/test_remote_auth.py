@@ -256,6 +256,32 @@ def test_pkce_replay_and_wrong_audience(remote):
     assert rpc(client, foreign, "tools/list").status_code == 401
 
 
+def test_remote_raw_query_rejected_before_servicenow_request(remote, monkeypatch):
+    import requests
+    from unittest.mock import Mock
+
+    client, _, _ = remote
+    tokens, _ = login(client, "A")
+    request = Mock(side_effect=AssertionError("Unexpected ServiceNow request"))
+    monkeypatch.setattr(requests.Session, "request", request)
+    result = rpc(client, tokens["access_token"], "tools/call", {
+        "name": "list_records",
+        "arguments": {"table": "incident", "query": "active=true"},
+    })
+    assert result.status_code == 200, result.text
+    assert result.json()["result"]["isError"] is True
+    assert "RAW_QUERY_PROHIBITED" in str(result.json()["result"]["content"])
+    error = result.json()["result"]["structuredContent"]
+    assert error["code"] == "RAW_QUERY_PROHIBITED"
+    assert error["outcome"] == "not_attempted"
+    assert error["retryable"] is False
+    unknown = rpc(client, tokens["access_token"], "tools/call", {
+        "name": "nonexistent_tool", "arguments": {},
+    })
+    assert unknown.json()["error"]["code"] == -32602
+    request.assert_not_called()
+
+
 def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatch):
     import requests
     client, _, upstream = remote
@@ -268,8 +294,8 @@ def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatc
         seen.append(token)
         response = requests.Response()
         response.status_code = 403 if kwargs["url"].endswith("/" + "c" * 32) else 200
-        response._content = (b'{"result":[{"number":"HR-A"}]}' if token == "Bearer sn-A"
-                             else b'{"result":[{"number":"IT-B"}]}')
+        response._content = (b'{"result":[{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"HR-A"}]}' if token == "Bearer sn-A"
+                             else b'{"result":[{"sys_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","number":"IT-B"}]}')
         return response
 
     monkeypatch.setattr(requests.Session, "request", request)
@@ -331,7 +357,7 @@ def test_no_shared_fallback_or_write_access(settings, monkeypatch):
     assert client.session.headers["Authorization"] == "Bearer sn-A"
     for operation in (lambda: client.create_record("incident", {}),
                       lambda: client.get_record("incident", "../../sys_user")):
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeError):
             operation()
 
 

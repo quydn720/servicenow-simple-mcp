@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 from servicenow_mcp.config.environment import load_environment
-from fastmcp import FastMCP
+from servicenow_mcp.servers.base import ErrorReportingServer
 from key_value.aio.stores.filetree import FileTreeStore
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
@@ -26,7 +26,7 @@ def encrypted_storage(settings: RemoteSettings):
 
 def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=None):
     auth = create_auth(settings, storage if storage is not None else encrypted_storage(settings), http_client)
-    server = FastMCP("servicenow-user-auth-poc", auth=auth,
+    server = ErrorReportingServer("servicenow-user-auth-poc", auth=auth,
                      instructions="Read-only ServiceNow tools. ServiceNow enforces the connected user's ACLs.")
     register(server, user_client_factory(settings))
     return server

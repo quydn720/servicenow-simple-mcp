@@ -96,7 +96,8 @@ def test_story_clear_epic_and_criteria(agile):
 ])
 def test_invalid_inputs_before_client_creation(agile, name, kwargs):
     tools, _, factory = agile
-    if name.startswith(("create_", "update_")):
+    # Cross-field update validation still uses the existing write-error shape.
+    if name.startswith("update_") and kwargs in ({"sys_id": ID}, {"sys_id": ID, "description": None}):
         assert tools[name].fn(**kwargs)["status"] == "error"
     else:
         with pytest.raises(ValueError):
@@ -123,8 +124,8 @@ def test_reads(agile, entity, plural, table, display):
     kwargs = client.list_records.call_args.kwargs
     assert kwargs["table"] == table and kwargs["limit"] == 10 and kwargs["query"] is None
     assert {"sys_id", display} <= set(kwargs["fields"])
-    tools[f"list_agile_{plural}"].fn(None, ["sys_id"], 150)
-    client.list_records.assert_called_with(table=table, query=None, fields=["sys_id"], limit=150)
+    tools[f"list_agile_{plural}"].fn(None, ["sys_id"], 100)
+    client.list_records.assert_called_with(table=table, query=None, fields=["sys_id"], limit=100)
     client.list_records.return_value = []
     assert tools[f"list_agile_{plural}"].fn()["count"] == 0
 

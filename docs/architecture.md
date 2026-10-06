@@ -17,9 +17,12 @@ versioning rules for breaking changes and its checklist for review requirements.
 
 1. Add a module to the appropriate feature package, exporting
    `register(mcp, client_factory)`.
-2. Define tools inside that function with `@mcp.tool()`, obtain the client through
+2. Define tools inside that function with `@contract_tool(mcp, result_type)` from
+   `tools/contracts.py`, which publishes typed schemas and validates arguments
+   and results. Obtain the client through
    `client_factory()`, and call its API methods. Do not import `servicenow_mcp.servers.stdio` or
-   access credentials from tools.
+   access credentials from tools. Add declared record fields and payload types
+   to the contract module rather than returning unrestricted dictionaries.
 3. Call the module's registration function from its feature package's `register`.
    A new feature also needs an explicit entry in the registry and `KNOWN_FEATURES`.
 4. Add mocked tests for discovery, inputs, payloads, and responses. Preserve

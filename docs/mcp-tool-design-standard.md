@@ -539,12 +539,12 @@ MUST NOT be described as fully compliant merely because this standard exists.
   list tools do not forward caller queries. Structured filters and trusted
   owner-exception execution remain unimplemented; no approval can enable that
   capability until those controls are implemented and reviewed.
-- Existing Python `dict` results do not provide the explicit field-level contracts
-  illustrated here. Per-tool semantic versions and released schema snapshots
-  must be introduced through separate implementation work.
-- Current validation, descriptions, and permission specifications need per-tool
-  review; target bounds, identity checks, and choices in these examples are not
-  implemented or verified against a live instance by this document.
+- All 15 tools now publish explicit field-level input/output schemas and validate
+  arguments/results through `tools/contracts.py`. See [implemented contracts](tool-contracts.md).
+  Per-tool semantic versions and released schema snapshots remain to be introduced.
+- IDs, field allowlists, limits, priority choices, and text bounds are validated.
+  Instance-specific lengths/choices, identity checks, permission specifications,
+  and complete descriptions still require review and live-instance verification.
 - Current write failures return `status`/`message` (and sometimes preview/retry
   guidance), not the stable error envelope required here. MCP error flags and
   safe sanitization need verification during migration.

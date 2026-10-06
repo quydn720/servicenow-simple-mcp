@@ -67,7 +67,7 @@ def test_unfiltered_lists_still_work(server, name, arguments, table, extra):
                 **arguments, **extra, "fields": ["sys_id"], "limit": 5,
             })
             assert result.is_error is False
-            assert result.data == {
+            assert result.structured_content == {
                 "table": table, "count": 1, "records": [{"sys_id": "0" * 32}],
             }
 

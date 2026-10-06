@@ -286,8 +286,8 @@ def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatc
         seen.append(token)
         response = requests.Response()
         response.status_code = 403 if kwargs["url"].endswith("/" + "c" * 32) else 200
-        response._content = (b'{"result":[{"number":"HR-A"}]}' if token == "Bearer sn-A"
-                             else b'{"result":[{"number":"IT-B"}]}')
+        response._content = (b'{"result":[{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"HR-A"}]}' if token == "Bearer sn-A"
+                             else b'{"result":[{"sys_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","number":"IT-B"}]}')
         return response
 
     monkeypatch.setattr(requests.Session, "request", request)

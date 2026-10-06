@@ -151,8 +151,8 @@ def test_preview_cannot_be_modified_after_review(server):
 
 def test_validation_and_authentication_errors(server):
     _, tools, _, factory, ctx = server
-    result = invoke(tools['create_incident'], ctx, short_description=' ')
-    assert result == {'status': 'error', 'message': 'short_description is required.'}
+    with pytest.raises(ValueError):
+        invoke(tools['create_incident'], ctx, short_description=' ')
     factory.assert_not_called()
     pending = invoke(tools['create_incident'], ctx, short_description='Incident')
     factory.side_effect = RuntimeError('Missing configuration: SERVICENOW_INSTANCE')

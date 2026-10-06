@@ -195,6 +195,15 @@ change their calls. Structured filters and owner-approved exception execution
 are not implemented, so approval alone cannot enable raw queries. This is a
 security restriction; remaining contract migrations are separate work.
 
+### Typed tool contracts
+
+All 15 local tools (and the two shared remote read tools) publish explicit
+input/output schemas and validate arguments and results. See
+[implemented tool contracts](docs/tool-contracts.md) for field allowlists,
+limits, result variants, and compatibility changes. Existing names and response
+envelopes are retained, but malformed IDs, undeclared fields, invalid priorities,
+oversized text, and limits outside 1–100 are now rejected.
+
 ## Authentication
 
 See [authentication](docs/authentication.md).

@@ -4,6 +4,19 @@ from typing import Any, List, Optional
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
 from servicenow_mcp.tools.query_policy import reject_raw_query
+from servicenow_mcp.tools.contracts import (
+    SysId,
+    StoryFields,
+    EpicFields,
+    ProductFields,
+    RawQuery,
+    Limit,
+    READ_RESULTS,
+    contract_tool,
+    project_record,
+    project_records,
+    select_fields,
+)
 
 
 def reference(value: str, field: str, allow_empty: bool = False) -> str:
@@ -45,22 +58,55 @@ def update_payload(**values: Any) -> dict:
     return payload
 
 
-def register_reads(mcp: FastMCP, client_factory: ClientFactory,
-                   entity: str, plural: str, table: str, default_fields: List[str]) -> None:
-    @mcp.tool(name=f"get_agile_{entity}", description=f"Get an Agile {entity} by ServiceNow sys_id.")
-    def get(sys_id: str, fields: Optional[List[str]] = None) -> dict:
+def register_reads(
+    mcp: FastMCP,
+    client_factory: ClientFactory,
+    entity: str,
+    plural: str,
+    table: str,
+    default_fields: List[str],
+) -> None:
+    FieldSelection = {
+        "story": StoryFields,
+        "epic": EpicFields,
+        "product": ProductFields,
+    }[entity]
+
+    @contract_tool(
+        mcp,
+        READ_RESULTS[entity, "get"],
+        name=f"get_agile_{entity}",
+        description=f"Read one Agile {entity} from {table} by raw sys_id. Only declared fields are supported; sys_id is always included and references use display names. No writes. Transient read failures may be retried.",
+    )
+    def get(sys_id: SysId, fields: FieldSelection | None = None) -> dict:
         sys_id = reference(sys_id, "sys_id")
+        selected = select_fields(fields, default_fields)
         record = client_factory().get_record(
-            table=table, sys_id=sys_id,
-            fields=default_fields if fields is None else fields,
+            table=table,
+            sys_id=sys_id,
+            fields=selected,
         )
+        record = project_record(record, table, selected)
+        if record["sys_id"].lower() != sys_id.lower():
+            raise ValueError("ServiceNow returned a different record identifier.")
         return {"table": table, "sys_id": sys_id, "record": record}
 
-    @mcp.tool(name=f"list_agile_{plural}", description=f"List Agile {plural}. Read-only; references contain display names. Limit defaults to 10 and is clamped to 1–100. Raw queries are prohibited: omit query or pass null. Structured filters and owner-approved query exceptions are not implemented.")
-    def list_items(query: Optional[str] = None, fields: Optional[List[str]] = None, limit: int = 10) -> dict:
+    @contract_tool(
+        mcp,
+        READ_RESULTS[entity, "list"],
+        name=f"list_agile_{plural}",
+        description=f"List Agile {plural}. Read-only; references contain display names. Only declared fields are supported; sys_id is always included. Limit defaults to 10 and must be 1–100; no pagination. Raw queries are prohibited: omit query or pass null. Structured filters and owner-approved query exceptions are not implemented.",
+    )
+    def list_items(
+        query: RawQuery = None, fields: FieldSelection | None = None, limit: Limit = 10
+    ) -> dict:
         reject_raw_query(query)
+        selected = select_fields(fields, default_fields)
         records = client_factory().list_records(
-            table=table, query=None,
-            fields=default_fields if fields is None else fields, limit=limit,
+            table=table,
+            query=None,
+            fields=selected,
+            limit=limit,
         )
+        records = project_records(records, table, selected, limit)
         return {"table": table, "count": len(records), "records": records}

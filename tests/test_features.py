@@ -56,22 +56,22 @@ def test_invalid_features(monkeypatch, features):
 
 def test_migrated_payloads_and_results():
     client = Mock()
-    client.create_record.return_value = {'sys_id': 'created'}
-    client.list_records.return_value = [{'sys_id': 'existing'}]
-    client.get_record.return_value = {'sys_id': 'existing'}
+    client.create_record.return_value = {'sys_id': 'a' * 32}
+    client.list_records.return_value = [{'sys_id': 'b' * 32}]
+    client.get_record.return_value = {'sys_id': 'b' * 32}
     factory = Mock(return_value=client)
     registered = tools(create_server(factory))
-    result = registered['create_task'].fn(' Task ', description=' Details ', assignment_group=' group ')
-    client.create_record.assert_called_with('task', {'short_description': 'Task', 'description': 'Details', 'priority': '3', 'assignment_group': 'group'})
-    assert result == {'table': 'task', 'record': {'sys_id': 'created'}}
-    assert registered['create_incident'].fn(' Incident ') == {'table': 'incident', 'record': {'sys_id': 'created'}}
+    result = registered['create_task'].fn(' Task ', description=' Details ', assignment_group='c' * 32)
+    client.create_record.assert_called_with('task', {'short_description': 'Task', 'description': 'Details', 'priority': '3', 'assignment_group': 'c' * 32})
+    assert result == {'table': 'task', 'record': {'sys_id': 'a' * 32}}
+    assert registered['create_incident'].fn(' Incident ') == {'table': 'incident', 'record': {'sys_id': 'a' * 32}}
     client.create_record.assert_called_with('incident', {'short_description': 'Incident'})
-    assert registered['create_agile_story'].fn(' Story ', ' Description ', ' Criteria ', 0, '2') == {'table': 'rm_story', 'record': {'sys_id': 'created'}}
+    assert registered['create_agile_story'].fn(' Story ', ' Description ', ' Criteria ', 0, '2') == {'table': 'rm_story', 'record': {'sys_id': 'a' * 32}}
     client.create_record.assert_called_with('rm_story', {'short_description': 'Story', 'description': 'Description', 'acceptance_criteria': 'Criteria', 'story_points': 0, 'priority': '2'})
-    assert registered['list_records'].fn('incident', None, ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'existing'}]}
+    assert registered['list_records'].fn('incident', None, ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'b' * 32}]}
     client.list_records.assert_called_with(table='incident', query=None, fields=['sys_id'], limit=2)
-    assert registered['get_record'].fn('incident', 'existing', ['sys_id']) == {'table': 'incident', 'sys_id': 'existing', 'record': {'sys_id': 'existing'}}
-    client.get_record.assert_called_with(table='incident', sys_id='existing', fields=['sys_id'])
+    assert registered['get_record'].fn('incident', 'b' * 32, ['sys_id']) == {'table': 'incident', 'sys_id': 'b' * 32, 'record': {'sys_id': 'b' * 32}}
+    client.get_record.assert_called_with(table='incident', sys_id='b' * 32, fields=['sys_id'])
     assert factory.call_count == 5
 
 
@@ -86,7 +86,8 @@ def test_validation_before_client_creation(name, args):
     factory = Mock(side_effect=AssertionError('Client created before validation'))
     registered = tools(create_server(factory))
     if name.startswith("create_"):
-        assert registered[name].fn(*args)["status"] == "error"
+        with pytest.raises(ValueError):
+            registered[name].fn(*args)
     else:
         with pytest.raises(ValueError):
             registered[name].fn(*args)

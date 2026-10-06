@@ -1,3 +1,5 @@
+from servicenow_mcp.tools.descriptions import read_description
+
 import re
 from typing import Any, List, Optional
 
@@ -77,7 +79,7 @@ def register_reads(
         mcp,
         READ_RESULTS[entity, "get"],
         name=f"get_agile_{entity}",
-        description=f"Read one Agile {entity} from {table} by raw sys_id. Only declared fields are supported; sys_id is always included and references use display names. No writes. Transient read failures may be retried.",
+        description=read_description(table, default_fields, collection=False),
     )
     def get(sys_id: SysId, fields: FieldSelection | None = None) -> dict:
         sys_id = reference(sys_id, "sys_id")
@@ -96,7 +98,7 @@ def register_reads(
         mcp,
         READ_RESULTS[entity, "list"],
         name=f"list_agile_{plural}",
-        description=f"List Agile {plural}. Read-only; references contain display names. Only declared fields are supported; sys_id is always included. Limit defaults to 10 and must be 1–100; no pagination. Raw queries are prohibited: omit query or pass null. Structured filters and owner-approved query exceptions are not implemented.",
+        description=read_description(table, default_fields, collection=True),
     )
     def list_items(
         query: RawQuery = None, fields: FieldSelection | None = None, limit: Limit = 10

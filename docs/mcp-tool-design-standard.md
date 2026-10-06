@@ -543,12 +543,18 @@ MUST NOT be described as fully compliant merely because this standard exists.
   arguments/results through `tools/contracts.py`. See [implemented contracts](tool-contracts.md).
   Per-tool semantic versions and released schema snapshots remain to be introduced.
 - IDs, field allowlists, limits, priority choices, and text bounds are validated.
-  Instance-specific lengths/choices, identity checks, permission specifications,
-  and complete descriptions still require review and live-instance verification.
+  Instance-specific lengths/choices, identity checks, and permission specifications
+  still require review and live-instance verification.
 - Tools now return stable error codes, safe messages, retryability, and outcomes
   with MCP `isError: true`; all output schemas cover errors. HTTP failures,
   transport failures, and ambiguous writes are classified explicitly. Upstream
   response details and raw exception text are not returned. See [error handling](error-handling.md).
+- All 15 published tool descriptions now identify supported tables/fields, result
+  bounds, unsupported operations, read/write behavior, and retry restrictions.
+  Write descriptions disclose preview expiration, subsequent-reply approval,
+  session/single-use limitations, and the lack of independently verified human
+  approval. List descriptions disclose unspecified ordering and the absence of
+  a truncation indicator.
 - Existing writes already use preview-before-confirmation with 600-second,
   single-use, session-bound IDs. This provides useful safeguards but does not
   independently verify human approval or support stateless previews.

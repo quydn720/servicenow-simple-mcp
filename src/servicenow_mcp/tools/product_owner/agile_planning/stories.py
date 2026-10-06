@@ -14,6 +14,7 @@ from servicenow_mcp.tools.contracts import (
     PREPARE_RESULTS,
     contract_tool,
 )
+from servicenow_mcp.tools.descriptions import prepare_description
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
 from .shared import reference, register_reads, title, update_payload, validate_points
 
@@ -38,7 +39,24 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         ],
     )
 
-    @contract_tool(mcp, PREPARE_RESULTS["rm_story", "insert"])
+    @contract_tool(
+        mcp,
+        PREPARE_RESULTS["rm_story", "insert"],
+        description=prepare_description(
+            "rm_story",
+            (
+                "short_description",
+                "description",
+                "acceptance_criteria",
+                "story_points",
+                "priority",
+                "product",
+                "epic",
+            ),
+            update=False,
+            details="short_description is trimmed, nonblank and limited to 160 characters. Text fields are trimmed and limited to 4000 characters. Priority accepts raw choice codes 1–5. Priority defaults to 3. Product and epic require raw sys_ids; acceptance_criteria supports HTML. Story points must be an integer 0–100. ",
+        ),
+    )
     @return_write_errors
     async def create_agile_story(
         short_description: Summary,
@@ -51,7 +69,6 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         *,
         ctx: Context,
     ) -> dict:
-        """Prepare a preview for user review before creating an Agile story. Product and epic accept sys_ids from Agile lookup tools; acceptance criteria supports HTML."""
         short_description = title(short_description)
         validate_points(story_points)
 
@@ -72,7 +89,24 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
         return await preview_write(ctx, client_factory, "rm_story", payload)
 
-    @contract_tool(mcp, PREPARE_RESULTS["rm_story", "update"])
+    @contract_tool(
+        mcp,
+        PREPARE_RESULTS["rm_story", "update"],
+        description=prepare_description(
+            "rm_story",
+            (
+                "short_description",
+                "description",
+                "acceptance_criteria",
+                "story_points",
+                "priority",
+                "product",
+                "epic",
+            ),
+            update=True,
+            details="short_description is trimmed, nonblank and limited to 160 characters. Text fields are trimmed and limited to 4000 characters. Priority accepts raw choice codes 1–5. Product and epic require raw sys_ids; acceptance_criteria supports HTML. Story points must be an integer 0–100. ",
+        ),
+    )
     @return_write_errors
     async def update_agile_story(
         sys_id: SysId,
@@ -86,7 +120,6 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         *,
         ctx: Context,
     ) -> dict:
-        """Prepare a preview for user review before updating a story by sys_id. None leaves fields unchanged; empty text/reference strings clear them. References accept sys_ids; acceptance criteria supports HTML."""
         sys_id = reference(sys_id, "sys_id")
         payload = update_payload(
             short_description=short_description,

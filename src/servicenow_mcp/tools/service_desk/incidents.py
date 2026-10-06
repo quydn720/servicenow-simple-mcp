@@ -8,14 +8,23 @@ from servicenow_mcp.tools.contracts import (
     PREPARE_RESULTS,
     contract_tool,
 )
+from servicenow_mcp.tools.descriptions import prepare_description
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
-    @contract_tool(mcp, PREPARE_RESULTS["incident", "insert"])
+    @contract_tool(
+        mcp,
+        PREPARE_RESULTS["incident", "insert"],
+        description=prepare_description(
+            "incident",
+            ("short_description",),
+            update=False,
+            details="short_description is trimmed, nonblank and limited to 160 characters. ",
+        ),
+    )
     @return_write_errors
     async def create_incident(short_description: Summary, ctx: Context) -> dict:
-        """Prepare a preview for user review before creating a ServiceNow incident with a required short description."""
         if not short_description or not short_description.strip():
             raise ValueError("short_description is required.")
 

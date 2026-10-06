@@ -11,6 +11,7 @@ from weakref import WeakKeyDictionary
 from fastmcp import Context, FastMCP
 
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.tools.descriptions import CONFIRM_DESCRIPTION
 from servicenow_mcp.errors import OperationError, error_envelope
 from servicenow_mcp.tools.contracts import (
     CONFIRM_RESULT,
@@ -121,12 +122,11 @@ def register_write_review(mcp: FastMCP) -> None:
     store = PreviewStore()
     _stores[mcp] = store
 
-    @contract_tool(mcp, CONFIRM_RESULT)
+    @contract_tool(mcp, CONFIRM_RESULT, description=CONFIRM_DESCRIPTION)
     @return_write_errors
     async def confirm_pending_write(
         preview_id: PreviewId, confirmed: Confirmed, ctx: Context
     ) -> dict:
-        """Commit the saved preview ONLY after the user reviewed it and explicitly approved in a subsequent chat reply. Pass confirmed=false to cancel. Never infer approval from the initial request. Preview IDs expire after 10 minutes and are single-use; values cannot be changed here."""
         if confirmed is not True and confirmed is not False:
             raise ValueError("confirmed must be a boolean.")
         with store.lock:

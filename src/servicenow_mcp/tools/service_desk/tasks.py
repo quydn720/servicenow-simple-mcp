@@ -10,11 +10,21 @@ from servicenow_mcp.tools.contracts import (
     contract_tool,
 )
 from servicenow_mcp.tools.contracts import Text, Priority, SysId
+from servicenow_mcp.tools.descriptions import prepare_description
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
-    @contract_tool(mcp, PREPARE_RESULTS["task", "insert"])
+    @contract_tool(
+        mcp,
+        PREPARE_RESULTS["task", "insert"],
+        description=prepare_description(
+            "task",
+            ("short_description", "description", "priority", "assignment_group"),
+            update=False,
+            details="short_description is trimmed, nonblank and limited to 160 characters. Text fields are trimmed and limited to 4000 characters. Priority accepts raw choice codes 1–5. assignment_group requires a raw sys_id; priority defaults to raw choice code 3. ",
+        ),
+    )
     @return_write_errors
     async def create_task(
         short_description: Summary,
@@ -24,7 +34,6 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         *,
         ctx: Context,
     ) -> dict:
-        """Prepare a preview for user review before creating a ServiceNow task with a narrow, safe payload."""
         if not short_description or not short_description.strip():
             raise ValueError("short_description is required.")
 

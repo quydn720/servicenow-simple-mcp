@@ -83,3 +83,17 @@ compliance. Per-tool permission review, contract versions/snapshots,
 and deprecation/migration governance remain separate work. The original standard's
 read/write examples are illustrative target contracts, not substitutes for these
 runtime definitions. Raw-query exceptions and structured filters remain disabled.
+
+## Published descriptions
+
+All tool descriptions identify their supported tables and fields, bounded results,
+unsupported operations, and retry restrictions. Read tools disclose display-name
+references and raw string values. List tools disclose ServiceNow-determined order,
+no pagination, and no total count or truncation indicator.
+
+Write preparation and confirmation descriptions state the 600-second lifetime,
+session binding, single-use IDs, cancellation, exact payload approval in a later
+user reply, and the inability to independently verify human approval. They direct
+clients to avoid automatic write retries and reconcile unknown outcomes before
+preparing and approving another preview. These descriptions document existing
+behavior; they do not add authorization or versioning enforcement.

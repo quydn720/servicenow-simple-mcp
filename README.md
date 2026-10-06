@@ -104,6 +104,12 @@ stop the stdio MCP server. The dashboard is bound to localhost only.
 - `get_record` — fetch one record by `sys_id`
 - `create_task` — create a task with safe required fields
 
+Returned records use display names for reference fields, such as
+`"assignment_group": "Service Desk"` and `"assigned_to": "Jane Doe"`.
+This applies to list, get, create, and update responses. The record's own
+`sys_id`, choice codes, and timestamps retain their raw values. Queries and
+write payloads still use reference sys_ids.
+
 ## Authentication
 
 Authentication applies to outbound ServiceNow API requests. The MCP server uses

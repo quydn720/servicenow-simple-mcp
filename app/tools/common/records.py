@@ -9,7 +9,7 @@ from app.tools import ClientFactory
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool()
     def list_records(table: str, query: Optional[str] = None, fields: Optional[List[str]] = None, limit: int = 10) -> dict:
-        """List records from a ServiceNow table. Restrict to known tables and safe fieldsets in production."""
+        """List records from a ServiceNow table with display names for reference fields. Restrict to known tables and safe fieldsets in production."""
         if not table or not table.strip():
             raise ValueError("The table name is required.")
     
@@ -23,7 +23,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
     @mcp.tool()
     def get_record(table: str, sys_id: str, fields: Optional[List[str]] = None) -> dict:
-        """Fetch a single ServiceNow record by sys_id."""
+        """Fetch a single ServiceNow record by sys_id, with display names for reference fields."""
         if not table or not table.strip():
             raise ValueError("The table name is required.")
         if not sys_id or not sys_id.strip():

@@ -1,5 +1,13 @@
 # Easy MCP Server
 
+## Remote end-user authorization POC
+
+A separate read-only Streamable HTTP server supports per-user ServiceNow OAuth
+through corporate SSO, with approved MCP client callbacks and encrypted token
+storage. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
+`python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
+server described below remains available.
+
 This project is a starter Model Context Protocol (MCP) server for a ServiceNow Personal Developer Instance (PDI). It exposes a small set of safe tools for reading and creating records while keeping the default scope narrow and secure.
 
 ## What this starter includes
@@ -21,6 +29,13 @@ This project is a starter Model Context Protocol (MCP) server for a ServiceNow P
 
 ## Quick start
 
+Requires Python 3.11 or newer. Run setup and server commands from the directory
+containing your `.env`. For a client launched elsewhere, set `MCP_ENV_FILE` to
+its absolute path; remote startup uses `MCP_REMOTE_ENV_FILE` for `.env.remote`.
+Environment variables override values loaded from these files. Importing a
+server module does not load credentials or create a server.
+
+
 1. Create a virtual environment
 
    ```bash
@@ -32,7 +47,9 @@ This project is a starter Model Context Protocol (MCP) server for a ServiceNow P
 2. Install dependencies
 
    ```bash
-   pip install -r requirements.txt
+   pip install -e .
+   # Optional local dashboard:
+   pip install -e ".[dashboard]"
    ```
 
 3. Configure credentials
@@ -68,21 +85,21 @@ This project is a starter Model Context Protocol (MCP) server for a ServiceNow P
    Run the automatic OAuth setup flow:
 
    ```bash
-   python -m app.oauth_setup
+   python -m servicenow_mcp.cli.oauth_setup
    ```
 
    This opens ServiceNow in your browser, starts a one-time local callback
    listener, exchanges the authorization code, and saves the refresh token to
    `.env`. No copy/paste of the code is required. The listener binds only to
-   `127.0.0.1` and stops after the callback. Use `app.oauth_setup` for this
-   flow; do not run the older `app.oauth_callback` listener at the same time
-   because it uses the same port. Restart your MCP client/server after setup
+   `127.0.0.1` and stops after the callback. Use `servicenow_mcp.cli.oauth_setup` for this
+   flow; do not run the older `servicenow_mcp.cli.legacy_oauth_callback` listener at the same time
+   because it uses the same port. The legacy listener is retained only for manual troubleshooting. Restart your MCP client/server after setup
    so it loads the updated `.env`.
 
 4. Start the MCP server
 
    ```bash
-   python app/server.py
+   python -m servicenow_mcp.servers.stdio
    ```
 
 ## Local status dashboard
@@ -92,7 +109,7 @@ Run the dashboard from the project root:
 ```bash
 cd "/Users/quydo/My MCP"
 . .venv/bin/activate
-python -m app.web
+python -m servicenow_mcp.dashboard.web
 ```
 
 Open http://127.0.0.1:5050 in your browser. Use the dashboard to start and
@@ -112,38 +129,7 @@ write payloads still use reference sys_ids.
 
 ## Authentication
 
-Authentication applies to outbound ServiceNow API requests. The MCP server uses
-local stdio. Set `SERVICENOW_AUTH_TYPE` to `basic` or `oauth`; omitted means
-`oauth` for compatibility. Restart the MCP process after configuration changes.
-Environment variables already set by the launcher take precedence over `.env`.
-
-Basic authentication:
-
-```env
-SERVICENOW_INSTANCE=https://yourinstance.service-now.com
-SERVICENOW_AUTH_TYPE=basic
-SERVICENOW_USERNAME=integration-user
-SERVICENOW_PASSWORD=your-password
-```
-
-OAuth with automatic refresh:
-
-```env
-SERVICENOW_INSTANCE=https://yourinstance.service-now.com
-SERVICENOW_AUTH_TYPE=oauth
-SERVICENOW_OAUTH_CLIENT_ID=your-client-id
-SERVICENOW_OAUTH_CLIENT_SECRET=your-client-secret
-SERVICENOW_OAUTH_REFRESH_TOKEN=your-refresh-token
-SERVICENOW_OAUTH_ACCESS_TOKEN=
-```
-
-Use `python -m app.oauth_setup` to obtain the refresh token as described above.
-For an externally managed access token, leave the refresh token blank and set
-`SERVICENOW_OAUTH_ACCESS_TOKEN`; client ID and secret are not required in this
-mode. If both tokens exist, the refresh token takes precedence. Only credentials
-for the selected authentication mode are validated. Tools create a fresh client
-per invocation; refresh mode exchanges the refresh token on each invocation.
-There is no token cache or automatic retry of failed writes.
+See [authentication](docs/authentication.md).
 
 ## Feature groups
 
@@ -155,61 +141,83 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | --- | --- |
 | `common` | `list_records`, `get_record` |
 | `service_desk` | `create_incident`, `create_task`, `get_incident` prompt |
-| `product_owner` | `create_agile_story` |
+| `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 
 Omitting the setting enables the first three groups and preserves existing
-names and schemas. Whitespace and duplicate names are accepted. Unknown groups
+tool names and existing story arguments. Whitespace and duplicate names are accepted. Unknown groups
 or an explicitly empty list stop startup. Groups control MCP discovery; they do
 not change ServiceNow ACLs. The incident prompt references `get_record`, so enable
 `common` alongside `service_desk` when using that prompt.
 
 ## Architecture and adding tools
 
-`server.py` wires configuration, a client factory, and the explicit feature
-registry. `create_server(client_factory=...)` supports isolated tests. Discovery
-requires neither ServiceNow credentials nor a network connection. Credentials
-are validated when a tool requests its client.
+See [architecture and adding tools](docs/architecture.md).
 
-The `app/auth` providers implement `authenticate(session)`; the factory selects
-Basic or OAuth. `ServiceNowClient` owns HTTP and Table API operations. Feature
-modules in `app/tools` own use-case validation, payloads, and MCP results.
+## Agile planning
 
-To add a use case:
+See [agile planning](docs/agile-planning.md).
 
-1. Add a module to the appropriate feature package, exporting
-   `register(mcp, client_factory)`.
-2. Define tools inside that function with `@mcp.tool()`, obtain the client through
-   `client_factory()`, and call its API methods. Do not import `app.server` or
-   access credentials from tools.
-3. Call the module's registration function from its feature package's `register`.
-   A new feature also needs an explicit entry in the registry and `KNOWN_FEATURES`.
-4. Add mocked tests for discovery, inputs, payloads, and responses. Preserve
-   existing MCP names and schemas when extending current use cases.
+## Required review before ServiceNow writes
 
-The developer package is an extension point only. Incident updates, epic creation,
-and catalog modifications are not implemented by this architecture update.
+See [required review before servicenow writes](docs/write-review.md).
 
 ## Read-only connection check
 
-Configure either Basic or OAuth above, then run the same check from the project
-root using the virtual environment. This requests at most one incident ID and
+Configure either Basic or OAuth using the [authentication guide](docs/authentication.md),
+then run the check from the project root using the virtual environment. This requests at most one incident ID and
 prints only a success message; it does not create or update records.
 
 ```bash
 python - <<'PYTHON'
-from dotenv import load_dotenv
-from app.config import Settings
-from app.service_now_client import ServiceNowClient
+from servicenow_mcp.config.environment import load_environment
+from servicenow_mcp.config.local import Settings
+from servicenow_mcp.client import ServiceNowClient
 
-load_dotenv('.env')
+load_environment()
 client = ServiceNowClient(Settings.from_env())
 client.list_records('incident', fields=['sys_id'], limit=1)
 print('Authentication and Table API read succeeded.')
 PYTHON
 ```
 
-Run automated tests with `python -m pytest -q`. Authentication and tool tests use
+Install the complete development environment with
+`uv sync --locked --all-extras --group dev`, then run `uv run --locked pytest -q`
+and `uv run --locked ruff check .`. Authentication and tool tests use
 mocked HTTP/clients and do not create live ServiceNow records. The dashboard
 continues to control its local subprocess; MCP clients launch their own stdio
-server with `python app/server.py` or `python -m app.server`.
+server with `python -m servicenow_mcp.servers.stdio`.
+
+## Package layout and commands
+
+```text
+src/servicenow_mcp/
+├── auth/       # ServiceNow authentication providers
+├── servers/    # Local stdio and remote HTTP server factories and entry points
+├── config/     # Local/remote settings and explicit environment-file loading
+├── client.py   # ServiceNow HTTP and Table API client
+├── tools/      # Feature registry, tool groups, and write previews
+├── dashboard/  # Optional Flask dashboard and packaged HTML templates
+└── cli/        # OAuth setup and legacy manual callback listener
+```
+
+The repository also contains `tests/`, `docs/`, `deploy/`, and `servicenow/`
+(the instance-side identity endpoint). Project dependencies and tooling live
+in `pyproject.toml`; `uv.lock` records exact resolved dependencies. Core runtime
+installs exclude Flask and development tools; remote and dashboard extras are
+optional. `uv sync --locked --no-dev` installs the locked core runtime;
+add `--extra remote` or `--extra dashboard` as needed. Pip installations use
+the declared dependency constraints; use uv for the exact locked environment.
+
+| Installed command | Python module alternative |
+| --- | --- |
+| `servicenow-mcp` | `python -m servicenow_mcp.servers.stdio` |
+| `servicenow-mcp-remote` | `python -m servicenow_mcp.servers.remote` |
+| `servicenow-mcp-dashboard` | `python -m servicenow_mcp.dashboard.web` |
+| `servicenow-oauth-setup` | `python -m servicenow_mcp.cli.oauth_setup` |
+
+After this refactor, install the package and update MCP client launch commands
+that previously pointed to `app/server.py` or `app.*`. For example, use the
+absolute path to `.venv/bin/servicenow-mcp` and set `MCP_ENV_FILE` in the client
+environment. Tool names, arguments, and ServiceNow environment variables are
+unchanged. The remote setup guide is in [docs/remote-auth-poc.md](docs/remote-auth-poc.md).

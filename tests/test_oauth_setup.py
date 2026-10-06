@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pytest
 
-from app.oauth_setup import OAuthCallbackHandler
+from servicenow_mcp.cli.oauth_setup import OAuthCallbackHandler
 
 
 @pytest.mark.parametrize('query, expected, status', [

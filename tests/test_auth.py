@@ -4,8 +4,8 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from app.config import Settings
-from app.service_now_client import ServiceNowClient
+from servicenow_mcp.config.local import Settings
+from servicenow_mcp.client import ServiceNowClient
 
 
 @pytest.fixture(autouse=True)

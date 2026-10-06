@@ -2,8 +2,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.config import Settings
-from app.service_now_client import ServiceNowClient
+from servicenow_mcp.config.local import Settings
+from servicenow_mcp.client import ServiceNowClient
 
 
 ID = "a" * 32
@@ -92,3 +92,15 @@ def test_reference_names_across_table_operations(client, operation, method):
 def test_empty_and_plain_list_responses(client, body, expected):
     client.session.request.return_value = Mock(status_code=200, json=Mock(return_value=body))
     assert client.list_records("incident") == expected
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_empty_wrapped_id_is_not_a_successful_write(client, operation):
+    body = {"result": {"sys_id": {"display_value": "", "value": ""}}}
+    client.session.request.return_value = Mock(status_code=200, json=Mock(return_value=body))
+    with pytest.raises(RuntimeError, match="no valid record"):
+        if operation == "create":
+            client.create_record("incident", {"short_description": "Printer problem"})
+        else:
+            client.update_record("incident", ID, {"short_description": "Printer problem"})
+    client.session.request.assert_called_once()

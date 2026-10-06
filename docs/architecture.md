@@ -11,6 +11,10 @@ modules in `src/servicenow_mcp/tools` own use-case validation, payloads, and MCP
 
 To add a use case:
 
+Follow the [MCP tool design standard](mcp-tool-design-standard.md) and complete
+its tool specification template before adding or changing a tool. See its
+versioning rules for breaking changes and its checklist for review requirements.
+
 1. Add a module to the appropriate feature package, exporting
    `register(mcp, client_factory)`.
 2. Define tools inside that function with `@mcp.tool()`, obtain the client through

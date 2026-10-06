@@ -102,6 +102,62 @@ server module does not load credentials or create a server.
    python -m servicenow_mcp.servers.stdio
    ```
 
+## Claude Desktop setup
+
+Install the package into this project's virtual environment before configuring
+Claude Desktop. From the project root, use `uv sync --locked --no-dev`, or:
+
+```bash
+"/Users/quydo/My MCP/.venv/bin/python" -m pip install -e "/Users/quydo/My MCP"
+```
+
+In Claude Desktop, open **Settings → Developer → Edit Config**. The configuration
+file is `~/Library/Application Support/Claude/claude_desktop_config.json` on
+macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows. Add the
+following entry to `mcpServers`, preserving any other servers and settings:
+
+```json
+{
+  "mcpServers": {
+    "servicenow-pdi": {
+      "command": "/Users/quydo/My MCP/.venv/bin/python",
+      "args": ["-m", "servicenow_mcp.servers.stdio"],
+      "env": {
+        "MCP_ENV_FILE": "/Users/quydo/My MCP/.env"
+      }
+    }
+  }
+}
+```
+
+Replace the absolute paths with your project location. Paths containing spaces
+are ordinary JSON strings; do not add shell quotes inside the values. On
+Windows, use `.venv\\Scripts\\python.exe` and escape backslashes in JSON paths
+(for example, `C:\\Projects\\My MCP\\.env`). Keep credentials in the `.env` file
+described in the quick start. The explicit `MCP_ENV_FILE` path lets the server
+find that file when Claude Desktop launches from a different working directory.
+
+If upgrading from the old layout, replace the argument pointing to
+`app/server.py` with the two module arguments above. The `src/` layout requires
+installing the package; pointing directly at `src/servicenow_mcp/servers/stdio.py`
+does not replace that installation.
+
+Save the configuration, fully quit Claude Desktop, and reopen it. Check that
+`servicenow-pdi` connects in Developer settings. If it fails:
+
+- `No module named servicenow_mcp`: install the package using the exact Python
+  interpreter configured in `command`.
+- A missing `app/server.py` error: update the stale launch arguments and restart
+  Claude Desktop.
+- Missing ServiceNow configuration when invoking a tool: check `MCP_ENV_FILE`
+  and the required values in `.env`.
+- For startup errors, inspect `~/Library/Logs/Claude/mcp-server-servicenow-pdi.log`
+  on macOS, or `%APPDATA%\Claude\logs` on Windows.
+
+See the [official MCP desktop connection guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+for configuration and troubleshooting details. This entry runs the local stdio
+server; remote OAuth setup is documented in [the remote guide](docs/remote-auth-poc.md).
+
 ## Local status dashboard
 
 Run the dashboard from the project root:
@@ -153,6 +209,10 @@ not change ServiceNow ACLs. The incident prompt references `get_record`, so enab
 ## Architecture and adding tools
 
 See [architecture and adding tools](docs/architecture.md).
+
+Tool authors and reviewers must follow the [MCP tool design standard](docs/mcp-tool-design-standard.md),
+including its contract template and review checklist. The standard documents
+target requirements and current compliance gaps; it does not change runtime behavior.
 
 ## Agile planning
 

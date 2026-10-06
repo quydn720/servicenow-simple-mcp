@@ -27,6 +27,12 @@ class ServiceNowClient:
 
     def _request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
+        if path.startswith("/table/"):
+            params = dict(params or {})
+            # Keep raw values for non-reference fields and use links to identify
+            # references without fetching table metadata or individual records.
+            params["sysparm_display_value"] = "all"
+            params["sysparm_exclude_reference_link"] = "false"
         try:
             response = self.session.request(
                 method=method,
@@ -42,9 +48,26 @@ class ServiceNowClient:
             raise RuntimeError(f"ServiceNow request failed (HTTP {response.status_code})")
 
         try:
-            return response.json()
+            body = response.json()
         except ValueError:
             raise RuntimeError("ServiceNow returned a non-JSON response") from None
+        if path.startswith("/table/"):
+            result = body.get("result")
+            if isinstance(result, dict):
+                body["result"] = self._display_record(result)
+            elif isinstance(result, list):
+                body["result"] = [self._display_record(record) for record in result]
+        return body
+
+    @staticmethod
+    def _display_record(record: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten Table API field wrappers, using display names for references."""
+        return {
+            field: (
+                value.get("display_value", "") if "link" in value else value["value"]
+            ) if isinstance(value, dict) and "value" in value else value
+            for field, value in record.items()
+        }
 
     def list_records(
         self,

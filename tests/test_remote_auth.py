@@ -256,6 +256,24 @@ def test_pkce_replay_and_wrong_audience(remote):
     assert rpc(client, foreign, "tools/list").status_code == 401
 
 
+def test_remote_raw_query_rejected_before_servicenow_request(remote, monkeypatch):
+    import requests
+    from unittest.mock import Mock
+
+    client, _, _ = remote
+    tokens, _ = login(client, "A")
+    request = Mock(side_effect=AssertionError("Unexpected ServiceNow request"))
+    monkeypatch.setattr(requests.Session, "request", request)
+    result = rpc(client, tokens["access_token"], "tools/call", {
+        "name": "list_records",
+        "arguments": {"table": "incident", "query": "active=true"},
+    })
+    assert result.status_code == 200, result.text
+    assert result.json()["result"]["isError"] is True
+    assert "RAW_QUERY_PROHIBITED" in str(result.json()["result"]["content"])
+    request.assert_not_called()
+
+
 def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatch):
     import requests
     client, _, upstream = remote

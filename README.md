@@ -13,7 +13,7 @@ This project is a starter Model Context Protocol (MCP) server for a ServiceNow P
 ## What this starter includes
 
 - Read records from a ServiceNow table
-- List records with a query and limit
+- List records with a limit (caller-supplied raw queries are blocked)
 - Create a task record
 - Basic or OAuth 2.0 authentication via environment variables
 - Configurable tools grouped by feature
@@ -182,6 +182,18 @@ Returned records use display names for reference fields, such as
 This applies to list, get, create, and update responses. The record's own
 `sys_id`, choice codes, and timestamps retain their raw values. Queries and
 write payloads still use reference sys_ids.
+
+### Raw-query security change
+
+`list_records`, `list_agile_stories`, `list_agile_epics`, and
+`list_agile_products` reject every supplied `query` string, including empty
+strings, with a `RAW_QUERY_PROHIBITED` tool error before creating a ServiceNow
+client. This applies to local tools and the remote `list_records` tool.
+The argument is retained for clear rejection of older client calls; omit it or
+pass `null` for unfiltered lists. Existing callers that supply queries must
+change their calls. Structured filters and owner-approved exception execution
+are not implemented, so approval alone cannot enable raw queries. This is a
+security restriction; remaining contract migrations are separate work.
 
 ## Authentication
 

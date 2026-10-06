@@ -23,8 +23,8 @@ existence, ACLs, and business rules.
 Example MCP tool arguments (replace example IDs with lookup results):
 
 ```text
-list_agile_products(query="nameLIKEPortal")
-list_agile_epics(query="product=0123456789abcdef0123456789abcdef")
+list_agile_products(fields=["sys_id", "name"], limit=100)
+list_agile_epics(fields=["sys_id", "short_description", "product"], limit=100)
 create_agile_story(
     short_description="Allow customers to track requests",
     product="0123456789abcdef0123456789abcdef",
@@ -34,8 +34,12 @@ create_agile_story(
 update_agile_story(sys_id="11111111111111111111111111111111", epic="")
 ```
 
-Get/update tools require a record sys_id. List tools accept an optional encoded
-`query`, `fields`, and `limit` (default 10, clamped by the client to 1–100).
+Get/update tools require a record sys_id. List tools accept `fields` and `limit`
+(default 10, clamped by the client to 1–100). The legacy `query` argument MUST be
+omitted or null; any string returns a `RAW_QUERY_PROHIBITED` tool error before
+client creation. Structured filters and owner-approved exceptions are not
+implemented. Lists are unfiltered and bounded, so they may not contain the
+desired record; use get tools when a sys_id is known.
 Default lookup fields include sys_id and number/short_description for stories
 and epics, and sys_id/name for products. Explicit `fields` overrides the defaults.
 

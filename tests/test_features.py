@@ -68,8 +68,8 @@ def test_migrated_payloads_and_results():
     client.create_record.assert_called_with('incident', {'short_description': 'Incident'})
     assert registered['create_agile_story'].fn(' Story ', ' Description ', ' Criteria ', 0, '2') == {'table': 'rm_story', 'record': {'sys_id': 'created'}}
     client.create_record.assert_called_with('rm_story', {'short_description': 'Story', 'description': 'Description', 'acceptance_criteria': 'Criteria', 'story_points': 0, 'priority': '2'})
-    assert registered['list_records'].fn('incident', 'active=true', ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'existing'}]}
-    client.list_records.assert_called_with(table='incident', query='active=true', fields=['sys_id'], limit=2)
+    assert registered['list_records'].fn('incident', None, ['sys_id'], 2) == {'table': 'incident', 'count': 1, 'records': [{'sys_id': 'existing'}]}
+    client.list_records.assert_called_with(table='incident', query=None, fields=['sys_id'], limit=2)
     assert registered['get_record'].fn('incident', 'existing', ['sys_id']) == {'table': 'incident', 'sys_id': 'existing', 'record': {'sys_id': 'existing'}}
     client.get_record.assert_called_with(table='incident', sys_id='existing', fields=['sys_id'])
     assert factory.call_count == 5

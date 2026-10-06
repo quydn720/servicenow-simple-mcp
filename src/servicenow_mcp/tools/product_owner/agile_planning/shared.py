@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.tools.query_policy import reject_raw_query
 
 
 def reference(value: str, field: str, allow_empty: bool = False) -> str:
@@ -55,10 +56,11 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory,
         )
         return {"table": table, "sys_id": sys_id, "record": record}
 
-    @mcp.tool(name=f"list_agile_{plural}", description=f"List Agile {plural}, optionally using a ServiceNow encoded query. Reference fields contain display names.")
+    @mcp.tool(name=f"list_agile_{plural}", description=f"List Agile {plural}. Read-only; references contain display names. Limit defaults to 10 and is clamped to 1–100. Raw queries are prohibited: omit query or pass null. Structured filters and owner-approved query exceptions are not implemented.")
     def list_items(query: Optional[str] = None, fields: Optional[List[str]] = None, limit: int = 10) -> dict:
+        reject_raw_query(query)
         records = client_factory().list_records(
-            table=table, query=query,
+            table=table, query=None,
             fields=default_fields if fields is None else fields, limit=limit,
         )
         return {"table": table, "count": len(records), "records": records}

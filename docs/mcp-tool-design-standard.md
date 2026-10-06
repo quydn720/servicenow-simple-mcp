@@ -529,12 +529,16 @@ Preparation error (`isError: true`):
 
 ## Current compliance gaps
 
-This is a documentation change, not enforcement or a schema migration. Current
-tools MUST NOT be described as compliant merely because this standard exists.
+Publication of this standard does not itself enforce requirements or migrate
+schemas. Runtime progress and remaining gaps are recorded below. Current tools
+MUST NOT be described as fully compliant merely because this standard exists.
 
-- `common/records.py` and Agile list tools accept caller-supplied encoded `query`
-  strings; `client.py` forwards them as `sysparm_query`. There is no trusted
-  owner-exception gate in that path. Typed filters and a reviewed migration are needed.
+- Common and Agile list tools now reject every supplied `query` string with a
+  `RAW_QUERY_PROHIBITED` tool error before client creation. Omitted/null queries
+  remain supported. The internal client can still build query requests, but MCP
+  list tools do not forward caller queries. Structured filters and trusted
+  owner-exception execution remain unimplemented; no approval can enable that
+  capability until those controls are implemented and reviewed.
 - Existing Python `dict` results do not provide the explicit field-level contracts
   illustrated here. Per-tool semantic versions and released schema snapshots
   must be introduced through separate implementation work.

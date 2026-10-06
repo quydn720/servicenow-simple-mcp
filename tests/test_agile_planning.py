@@ -123,8 +123,8 @@ def test_reads(agile, entity, plural, table, display):
     kwargs = client.list_records.call_args.kwargs
     assert kwargs["table"] == table and kwargs["limit"] == 10 and kwargs["query"] is None
     assert {"sys_id", display} <= set(kwargs["fields"])
-    tools[f"list_agile_{plural}"].fn("active=true", ["sys_id"], 150)
-    client.list_records.assert_called_with(table=table, query="active=true", fields=["sys_id"], limit=150)
+    tools[f"list_agile_{plural}"].fn(None, ["sys_id"], 150)
+    client.list_records.assert_called_with(table=table, query=None, fields=["sys_id"], limit=150)
     client.list_records.return_value = []
     assert tools[f"list_agile_{plural}"].fn()["count"] == 0
 

@@ -4,12 +4,14 @@ from typing import List, Optional
 
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.tools.query_policy import reject_raw_query
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool()
     def list_records(table: str, query: Optional[str] = None, fields: Optional[List[str]] = None, limit: int = 10) -> dict:
-        """List records from a ServiceNow table with display names for reference fields. Restrict to known tables and safe fieldsets in production."""
+        """List records from an allowlisted ServiceNow table with display names for references. Read-only; limit defaults to 10 and is clamped to 1–100. Raw queries are prohibited: omit query or pass null. Structured filters and owner-approved query exceptions are not implemented."""
+        reject_raw_query(query)
         if not table or not table.strip():
             raise ValueError("The table name is required.")
     
@@ -18,7 +20,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
             raise ValueError(f"Table '{table}' is not allowed in this starter configuration.")
     
         client = client_factory()
-        records = client.list_records(table=table, query=query, fields=fields, limit=limit)
+        records = client.list_records(table=table, query=None, fields=fields, limit=limit)
         return {"table": table, "count": len(records), "records": records}
 
     @mcp.tool()

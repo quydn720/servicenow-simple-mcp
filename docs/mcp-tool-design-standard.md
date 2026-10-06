@@ -198,8 +198,8 @@ Do not map every connection failure to a known failed write.
 
 Messages and logs MUST NOT expose credentials, headers, stack traces, raw response
 bodies, or unrestricted sensitive data. Sanitized upstream HTTP status and
-relevant structured details MAY be included when safe. The current error wrapper
-does not yet supply the full envelope above; updating it is a compliance task.
+relevant structured details MAY be included when safe. The shared error boundary
+supplies this envelope and MCP error signaling; see [error handling](error-handling.md).
 
 ## 5. Contract versioning
 
@@ -545,9 +545,10 @@ MUST NOT be described as fully compliant merely because this standard exists.
 - IDs, field allowlists, limits, priority choices, and text bounds are validated.
   Instance-specific lengths/choices, identity checks, permission specifications,
   and complete descriptions still require review and live-instance verification.
-- Current write failures return `status`/`message` (and sometimes preview/retry
-  guidance), not the stable error envelope required here. MCP error flags and
-  safe sanitization need verification during migration.
+- Tools now return stable error codes, safe messages, retryability, and outcomes
+  with MCP `isError: true`; all output schemas cover errors. HTTP failures,
+  transport failures, and ambiguous writes are classified explicitly. Upstream
+  response details and raw exception text are not returned. See [error handling](error-handling.md).
 - Existing writes already use preview-before-confirmation with 600-second,
   single-use, session-bound IDs. This provides useful safeguards but does not
   independently verify human approval or support stateless previews.

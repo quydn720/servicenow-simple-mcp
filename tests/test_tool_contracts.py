@@ -280,7 +280,7 @@ def test_invalid_persisted_write_result_consumes_preview_and_matches_error_schem
             ).structured_content
             args = {"preview_id": pending["preview_id"], "confirmed": True}
             failed = (
-                await connection.call_tool("confirm_pending_write", args)
+                await connection.call_tool("confirm_pending_write", args, raise_on_error=False)
             ).structured_content
             Draft202012Validator(tools["confirm_pending_write"].output_schema).validate(
                 failed
@@ -288,7 +288,7 @@ def test_invalid_persisted_write_result_consumes_preview_and_matches_error_schem
             assert failed["status"] == "error"
             assert "may already have committed" in failed["retry_guidance"]
             again = (
-                await connection.call_tool("confirm_pending_write", args)
+                await connection.call_tool("confirm_pending_write", args, raise_on_error=False)
             ).structured_content
             Draft202012Validator(tools["confirm_pending_write"].output_schema).validate(
                 again

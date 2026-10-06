@@ -271,6 +271,14 @@ def test_remote_raw_query_rejected_before_servicenow_request(remote, monkeypatch
     assert result.status_code == 200, result.text
     assert result.json()["result"]["isError"] is True
     assert "RAW_QUERY_PROHIBITED" in str(result.json()["result"]["content"])
+    error = result.json()["result"]["structuredContent"]
+    assert error["code"] == "RAW_QUERY_PROHIBITED"
+    assert error["outcome"] == "not_attempted"
+    assert error["retryable"] is False
+    unknown = rpc(client, tokens["access_token"], "tools/call", {
+        "name": "nonexistent_tool", "arguments": {},
+    })
+    assert unknown.json()["error"]["code"] == -32602
     request.assert_not_called()
 
 
@@ -349,7 +357,7 @@ def test_no_shared_fallback_or_write_access(settings, monkeypatch):
     assert client.session.headers["Authorization"] == "Bearer sn-A"
     for operation in (lambda: client.create_record("incident", {}),
                       lambda: client.get_record("incident", "../../sys_user")):
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeError):
             operation()
 
 

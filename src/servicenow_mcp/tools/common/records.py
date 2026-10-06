@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.errors import OperationError
 from servicenow_mcp.tools.contracts import (
     CommonFields,
     Limit,
@@ -47,5 +48,5 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
             selected,
         )
         if record["sys_id"].lower() != sys_id.lower():
-            raise ValueError("ServiceNow returned a different record identifier.")
+            raise OperationError("UPSTREAM_ERROR", outcome="failed")
         return {"table": table, "sys_id": sys_id, "record": record}

@@ -85,10 +85,7 @@ def test_migrated_payloads_and_results():
 def test_validation_before_client_creation(name, args):
     factory = Mock(side_effect=AssertionError('Client created before validation'))
     registered = tools(create_server(factory))
-    if name.startswith("create_"):
-        with pytest.raises(ValueError):
-            registered[name].fn(*args)
-    else:
-        with pytest.raises(ValueError):
-            registered[name].fn(*args)
+    result = registered[name].fn(*args)
+    assert result["code"] == "VALIDATION_ERROR"
+    assert result["outcome"] == "not_attempted"
     factory.assert_not_called()

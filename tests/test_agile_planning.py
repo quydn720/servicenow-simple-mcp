@@ -4,6 +4,7 @@ import pytest
 import requests
 
 from servicenow_mcp.servers.stdio import create_server
+from servicenow_mcp.errors import OperationError
 from conftest import reviewed_tools
 
 ID = "0123456789abcdef0123456789abcdef"
@@ -96,12 +97,9 @@ def test_story_clear_epic_and_criteria(agile):
 ])
 def test_invalid_inputs_before_client_creation(agile, name, kwargs):
     tools, _, factory = agile
-    # Cross-field update validation still uses the existing write-error shape.
-    if name.startswith("update_") and kwargs in ({"sys_id": ID}, {"sys_id": ID, "description": None}):
-        assert tools[name].fn(**kwargs)["status"] == "error"
-    else:
-        with pytest.raises(ValueError):
-            tools[name].fn(**kwargs)
+    result = tools[name].fn(**kwargs)
+    assert result["code"] == "VALIDATION_ERROR"
+    assert result["outcome"] == "not_attempted"
     factory.assert_not_called()
 
 
@@ -140,13 +138,11 @@ def test_reads(agile, entity, plural, table, display):
 ])
 def test_errors_propagate_without_retry(agile, name, method, kwargs):
     tools, client, _ = agile
-    error = RuntimeError("ServiceNow request failed (HTTP 403)")
+    error = OperationError("PERMISSION_DENIED", outcome="failed", http_status=403)
     getattr(client, method).side_effect = error
-    if name.startswith(("create_", "update_")):
-        result = tools[name].fn(**kwargs)
-        assert result["status"] == "error" and result["message"] == str(error)
-    else:
-        with pytest.raises(RuntimeError) as caught:
-            tools[name].fn(**kwargs)
-        assert caught.value is error
+    result = tools[name].fn(**kwargs)
+    assert result["code"] == "PERMISSION_DENIED"
+    assert result["http_status"] == 403
+    assert result["retryable"] is False
+    assert result["outcome"] == "failed"
     assert getattr(client, method).call_count == 1

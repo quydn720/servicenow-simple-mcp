@@ -11,6 +11,7 @@ from weakref import WeakKeyDictionary
 from fastmcp import Context, FastMCP
 
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.errors import OperationError, error_envelope
 from servicenow_mcp.tools.contracts import (
     CONFIRM_RESULT,
     PreviewId,
@@ -58,14 +59,14 @@ _stores: WeakKeyDictionary = WeakKeyDictionary()
 
 
 def return_write_errors(fn):
-    """Return validation, confirmation, authentication and API error messages."""
+    """Return safe structured preparation errors; contract_tool sets isError."""
 
     @wraps(fn)
     async def wrapped(*args, **kwargs):
         try:
             return await fn(*args, **kwargs)
         except Exception as error:
-            return {"status": "error", "message": str(error)}
+            return error_envelope(error)
 
     return wrapped
 
@@ -81,11 +82,7 @@ async def preview_write(
     request_context = getattr(ctx, "request_context", None)
     protocol_version = getattr(request_context, "protocol_version", None)
     if protocol_version is not None and protocol_version >= "2026-07-28":
-        raise RuntimeError(
-            "Record previews require a session-based MCP connection. "
-            "Reconnect using a handshake connection "
-            "(FastMCP Client mode='legacy')."
-        )
+        raise OperationError("SESSION_REQUIRED")
     payload = normalize_payload(
         table, "update" if sys_id is not None else "insert", payload
     )
@@ -100,9 +97,7 @@ async def preview_write(
     with store.lock:
         store.prune()
         if len(store.pending) >= MAX_PENDING_PREVIEWS:
-            raise RuntimeError(
-                "Too many pending previews; cancel an existing preview or wait for expiration."
-            )
+            raise OperationError("PREVIEW_LIMIT_EXCEEDED")
         token = token_urlsafe(32)
         store.pending[token] = PendingWrite(
             ctx.session_id,
@@ -138,9 +133,7 @@ def register_write_review(mcp: FastMCP) -> None:
             store.prune()
             pending = store.pending.get(preview_id)
             if pending is None or pending.session_id != ctx.session_id:
-                raise ValueError(
-                    "Preview not found, expired, already used, or belongs to another session. Prepare a new preview."
-                )
+                raise OperationError("CONFIRMATION_INVALID")
             # Consume before the API call to prevent concurrent/replayed inserts,
             # even if the response is lost after ServiceNow commits the write.
             del store.pending[preview_id]
@@ -151,22 +144,27 @@ def register_write_review(mcp: FastMCP) -> None:
                 "preview": deepcopy(preview),
                 "message": "Write not confirmed; no write was made.",
             }
+        attempted = False
         try:
             client = pending.client_factory()
             payload = deepcopy(preview["fields"])
+            attempted = True
             if preview["operation"] == "insert":
                 record = client.create_record(preview["table"], payload)
             else:
                 record = client.update_record(
                     preview["table"], preview["sys_id"], payload
                 )
-            record = project_record(record, preview["table"])
+            record = project_record(record, preview["table"], failure_outcome="unknown")
             return {"table": preview["table"], "record": record}
         except Exception as error:
-            return {
-                "status": "error",
-                "preview": deepcopy(preview),
-                "message": str(error),
-                "retry_guidance": "This preview is consumed. Verify the instance before "
-                "preparing a new preview; the write may already have committed.",
-            }
+            if attempted and not isinstance(error, OperationError):
+                error = OperationError("INTERNAL_ERROR", outcome="unknown")
+            result = error_envelope(error, confirmation=True)
+            result["preview"] = deepcopy(preview)
+            result["retry_guidance"] = (
+                "This preview is consumed. Verify the instance before preparing a new preview; the write may already have committed."
+                if result["outcome"] == "unknown"
+                else "This preview is consumed. Resolve the error, then prepare and approve a new preview. Never automatically retry the write."
+            )
+            return result

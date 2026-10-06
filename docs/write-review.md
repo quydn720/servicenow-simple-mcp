@@ -45,12 +45,15 @@ full record. Instance defaults and business rules may affect the saved record
 returned by ServiceNow. The shared `confirm_pending_write` tool is registered
 when either `service_desk` or `product_owner` is enabled.
 
-Validation, authentication, and API failures return `{status: "error", message}`
-(plus the preview when available). API errors include the HTTP status and
-ServiceNow's structured `error.message` and `error.detail` when available,
-without dumping raw response bodies or headers. Successful confirmations return
+Validation, authentication, and API failures return
+`{status: "error", code, message, retryable, outcome}` with MCP `isError: true`
+(plus the preview and recovery guidance when available). API errors may include
+`http_status`; raw ServiceNow messages, details, response bodies, headers, and
+exception text are not exposed. See [standard error handling](error-handling.md).
+Successful confirmations return
 `{table, record}`. Failed writes are not automatically retried; after a
-connectivity failure, check the instance before preparing a new preview because
+connectivity failure with `outcome: "unknown"`, check the instance before preparing
+a new preview because
 the server might already have committed the record.
 
 When adding a write tool, use `@return_write_errors` and route the validated

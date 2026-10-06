@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 
 from fastmcp import FastMCP
 from servicenow_mcp.tools import ClientFactory
+from servicenow_mcp.errors import OperationError
 from servicenow_mcp.tools.query_policy import reject_raw_query
 from servicenow_mcp.tools.contracts import (
     SysId,
@@ -88,7 +89,7 @@ def register_reads(
         )
         record = project_record(record, table, selected)
         if record["sys_id"].lower() != sys_id.lower():
-            raise ValueError("ServiceNow returned a different record identifier.")
+            raise OperationError("UPSTREAM_ERROR", outcome="failed")
         return {"table": table, "sys_id": sys_id, "record": record}
 
     @contract_tool(

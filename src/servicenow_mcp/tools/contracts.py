@@ -4,8 +4,9 @@ import inspect
 from functools import wraps
 from typing import Annotated, Literal, Union, get_type_hints
 
-from fastmcp.exceptions import ToolError
-from fastmcp.tools.function_tool import FunctionTool
+from fastmcp.exceptions import ValidationError as MCPValidationError
+from fastmcp.tools.function_tool import FunctionTool, ToolResult
+from servicenow_mcp.errors import ErrorEnvelope, OperationError, error_envelope
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -220,20 +221,6 @@ RECORD_TYPES = {
 }
 
 
-class LegacyWriteError(ContractModel):
-    status: Literal["error"] = Field(
-        description="Write preparation or confirmation failed."
-    )
-    message: str = Field(
-        min_length=1,
-        description="Failure message; stable structured error codes are a separate migration.",
-    )
-    retry_guidance: str = Field(
-        default=None,
-        description="Reconcile the instance before another write attempt, when supplied.",
-    )
-
-
 class TaskCreateFields(ContractModel):
     short_description: Summary
     description: Text = None
@@ -302,7 +289,14 @@ for (table, operation), payload_type in PAYLOAD_TYPES.items():
 AnyPreview = Union[tuple(PREVIEW_TYPES.values())]
 WriteError = create_model(
     "WriteError",
-    __base__=LegacyWriteError,
+    __base__=ErrorEnvelope,
+    retry_guidance=(
+        str,
+        Field(
+            default=None,
+            description="Reconciliation or fresh-preview recovery guidance.",
+        ),
+    ),
     preview=(
         AnyPreview,
         Field(default=None, description="Exact saved preview when available."),
@@ -408,25 +402,21 @@ def select_fields(fields, allowed):
     return list(dict.fromkeys(["sys_id", *selected]))
 
 
-def project_record(record, table, fields=None):
+def project_record(record, table, fields=None, *, failure_outcome="failed"):
     if not isinstance(record, dict):
-        raise ToolError("ServiceNow returned an invalid record.")
+        raise OperationError("UPSTREAM_ERROR", outcome=failure_outcome)
     selected = select_fields(fields, FIELDS_BY_TABLE[table])
     projected = {key: value for key, value in record.items() if key in selected}
     try:
         RECORD_TYPES[table].model_validate(projected)
     except ValidationError:
-        raise ToolError(
-            "ServiceNow returned a record that violates the declared output contract."
-        ) from None
+        raise OperationError("UPSTREAM_ERROR", outcome=failure_outcome) from None
     return projected
 
 
 def project_records(records, table, fields, limit):
     if not isinstance(records, list) or len(records) > limit:
-        raise ToolError(
-            "ServiceNow returned a collection that violates the requested result limit."
-        )
+        raise OperationError("UPSTREAM_ERROR", outcome="failed")
     return [project_record(record, table, fields) for record in records]
 
 
@@ -447,9 +437,25 @@ def normalize_payload(table, operation, payload):
     )
 
 
+class ContractFunctionTool(FunctionTool):
+    async def run(self, arguments):
+        try:
+            return await super().run(arguments)
+        except (MCPValidationError, ValidationError, TypeError):
+            data = error_envelope(
+                ValueError(), confirmation=self.name == "confirm_pending_write"
+            )
+            return ToolResult(structured_content=data, is_error=True)
+
+    def convert_result(self, value):
+        if isinstance(value, dict) and value.get("status") == "error":
+            return ToolResult(structured_content=value, is_error=True)
+        return super().convert_result(value)
+
+
 def contract_tool(mcp, output, **metadata):
     """Publish schemas and validate direct and MCP invocations and results."""
-    adapter = TypeAdapter(output)
+    adapter = TypeAdapter(output | WriteError)
     schema = {"$schema": DIALECT, "type": "object", **adapter.json_schema()}
 
     def clean_defaults(node):
@@ -477,7 +483,10 @@ def contract_tool(mcp, output, **metadata):
         hints = get_type_hints(fn, include_extras=True)
 
         def arguments(args, kwargs):
-            bound = signature.bind(*args, **kwargs)
+            try:
+                bound = signature.bind(*args, **kwargs)
+            except TypeError:
+                raise OperationError("VALIDATION_ERROR") from None
             bound.apply_defaults()
             for name, value in bound.arguments.items():
                 if name == "ctx":
@@ -494,28 +503,39 @@ def contract_tool(mcp, output, **metadata):
                 )
             return bound
 
+        confirmation = fn.__name__ == "confirm_pending_write"
+
         def result(value):
             try:
                 return adapter.validate_python(value).model_dump(exclude_unset=True)
             except ValidationError:
-                raise ToolError(
-                    "Tool result violates the declared output contract; reconcile any attempted write before retrying."
+                raise OperationError(
+                    "INTERNAL_ERROR",
+                    outcome="unknown" if confirmation else "not_attempted",
                 ) from None
 
         if inspect.iscoroutinefunction(fn):
 
             @wraps(fn)
             async def wrapped(*args, **kwargs):
-                bound = arguments(args, kwargs)
-                return result(await fn(*bound.args, **bound.kwargs))
+                try:
+                    bound = arguments(args, kwargs)
+                    return result(await fn(*bound.args, **bound.kwargs))
+                except Exception as error:
+                    return result(error_envelope(error, confirmation=confirmation))
         else:
 
             @wraps(fn)
             def wrapped(*args, **kwargs):
-                bound = arguments(args, kwargs)
-                return result(fn(*bound.args, **bound.kwargs))
+                try:
+                    bound = arguments(args, kwargs)
+                    return result(fn(*bound.args, **bound.kwargs))
+                except Exception as error:
+                    return result(error_envelope(error))
 
-        tool = FunctionTool.from_function(wrapped, output_schema=schema, **metadata)
+        tool = ContractFunctionTool.from_function(
+            wrapped, output_schema=schema, **metadata
+        )
         tool.parameters["$schema"] = DIALECT
         for name, prop in tool.parameters["properties"].items():
             if "description" not in prop:

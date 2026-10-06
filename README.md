@@ -204,6 +204,10 @@ limits, result variants, and compatibility changes. Existing names and response
 envelopes are retained, but malformed IDs, undeclared fields, invalid priorities,
 oversized text, and limits outside 1–100 are now rejected.
 
+Tool execution failures return a structured standard error with MCP `isError: true`.
+See [error handling and recovery](docs/error-handling.md), especially the migration
+note for clients that previously received write failures as successful MCP calls.
+
 ## Authentication
 
 See [authentication](docs/authentication.md).

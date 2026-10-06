@@ -54,14 +54,14 @@ story_points, active, and timestamps. Reference fields are display names.
 | --- | --- |
 | Get | `{table, sys_id, record}` with typed record fields |
 | List | `{table, count, records}`; count equals returned length, length cannot exceed requested limit |
-| Create/update preparation | `{status: "awaiting_confirmation", preview_id, preview, expires_in_seconds: 600, message}` or existing write error |
+| Create/update preparation | `{status: "awaiting_confirmation", preview_id, preview, expires_in_seconds: 600, message}` or standard error |
 | Confirmation success | `{table, record}` with table-specific record fields |
 | Cancellation | `{status: "cancelled", preview, message}` |
-| Existing write error | `{status: "error", message}` with optional typed preview and retry_guidance |
+| Any tool execution error | `{status: "error", code, message, retryable, outcome}` with optional http_status, typed preview, and retry_guidance; MCP `isError: true` |
 
 Previews define the exact operation/table, allowed payload fields, and an ID for
 updates. Structured output objects forbid undeclared properties. Malformed read
-results fail as tool errors. Malformed saved-write results return the existing
+results fail as structured tool errors. Malformed saved-write results return a standard
 write failure with reconciliation guidance; preview IDs remain consumed so that
 the write is not replayed. The 600-second session-bound preview lifecycle and
 explicit approval policy are unchanged.
@@ -76,9 +76,10 @@ clients relying on undeclared output fields must stop doing so. `sys_id` is
 always returned even when not explicitly selected. FastMCP Python clients may
 parse typed results into models; use `structured_content` for the JSON object.
 
-This completes the typed-contract/validation implementation, not full standards
-compliance. Stable error codes/envelopes, consistent `isError` signaling for
-legacy write errors, per-tool permission review, contract versions/snapshots,
+All tool output schemas include the standard error variant. See
+[error handling](error-handling.md) for codes, outcomes, and client compatibility.
+Typed contracts, validation, and standard errors do not establish full standards
+compliance. Per-tool permission review, contract versions/snapshots,
 and deprecation/migration governance remain separate work. The original standard's
 read/write examples are illustrative target contracts, not substitutes for these
 runtime definitions. Raw-query exceptions and structured filters remain disabled.

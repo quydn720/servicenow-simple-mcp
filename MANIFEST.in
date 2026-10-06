@@ -1,0 +1,6 @@
+include .env.example .env.remote.example uv.lock
+recursive-include docs *.md
+recursive-include deploy Caddyfile.poc
+recursive-include servicenow *.js
+recursive-include tests *.py
+recursive-include src/servicenow_mcp/tools *.md

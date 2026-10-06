@@ -5,11 +5,12 @@ from unittest.mock import Mock
 import pytest
 import requests
 
-from app.server import create_server
+from servicenow_mcp.servers.stdio import create_server
+from conftest import reviewed_tools
 
 
 def tools(server):
-    return {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    return reviewed_tools(server)
 
 
 @pytest.fixture(autouse=True)
@@ -20,16 +21,23 @@ def isolated_environment(monkeypatch):
     monkeypatch.setattr(requests.sessions.Session, 'request', Mock(side_effect=AssertionError('Network during discovery')))
 
 
+AGILE_TOOLS = {
+    'create_agile_story', 'get_agile_story', 'list_agile_stories', 'update_agile_story',
+    'create_agile_epic', 'get_agile_epic', 'list_agile_epics', 'update_agile_epic',
+    'get_agile_product', 'list_agile_products',
+}
+
+
 def test_default_discovery():
     server = create_server()
-    assert set(tools(server)) == {'list_records', 'get_record', 'create_task', 'create_incident', 'create_agile_story'}
+    assert set(tools(server)) == {'list_records', 'get_record', 'create_task', 'create_incident', 'confirm_pending_write'} | AGILE_TOOLS
     assert {p.name for p in asyncio.run(server.list_prompts())} == {'get_incident'}
 
 
 @pytest.mark.parametrize('features, expected', [
     (' common, common ', {'list_records', 'get_record'}),
-    ('service_desk', {'create_task', 'create_incident'}),
-    ('product_owner', {'create_agile_story'}),
+    ('service_desk', {'create_task', 'create_incident', 'confirm_pending_write'}),
+    ('product_owner', AGILE_TOOLS | {'confirm_pending_write'}),
     ('developer', set()),
 ])
 def test_feature_selection(monkeypatch, features, expected):
@@ -77,6 +85,9 @@ def test_migrated_payloads_and_results():
 def test_validation_before_client_creation(name, args):
     factory = Mock(side_effect=AssertionError('Client created before validation'))
     registered = tools(create_server(factory))
-    with pytest.raises(ValueError):
-        registered[name].fn(*args)
+    if name.startswith("create_"):
+        assert registered[name].fn(*args)["status"] == "error"
+    else:
+        with pytest.raises(ValueError):
+            registered[name].fn(*args)
     factory.assert_not_called()

@@ -1,0 +1,5 @@
+# Replace this domain with POC_PUBLIC_URL's hostname. Caddy provisions TLS.
+# Run on the same host as python -m servicenow_mcp.servers.remote.
+mcp.example.com {
+    reverse_proxy 127.0.0.1:8000
+}

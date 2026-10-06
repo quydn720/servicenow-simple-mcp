@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "servicenow-mcp"
+version = "0.1.0"
+description = "Feature-based ServiceNow MCP server with local and remote authentication"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp==4.0.5",
+    "requests>=2.32.0,<3",
+    "python-dotenv>=1.0.1,<2",
+]
+
+[project.optional-dependencies]
+dashboard = ["Flask>=3.0.0,<4"]
+remote = [
+    "httpx2==2.13.0",
+    "cryptography==50.0.1",
+    "py-key-value-aio[filetree]==0.4.5",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.15,<0.16"]
+
+[project.scripts]
+servicenow-mcp = "servicenow_mcp.servers.stdio:main"
+servicenow-mcp-remote = "servicenow_mcp.servers.remote:main"
+servicenow-mcp-dashboard = "servicenow_mcp.dashboard.web:main"
+servicenow-oauth-setup = "servicenow_mcp.cli.oauth_setup:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"servicenow_mcp.dashboard" = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

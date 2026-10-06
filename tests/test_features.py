@@ -28,15 +28,22 @@ AGILE_TOOLS = {
 }
 
 
+SERVICE_DESK_TOOLS = {
+    'create_incident', 'create_task', 'get_incident', 'list_incidents',
+    'list_knowledge_articles', 'update_incident_journal', 'get_change_status',
+    'confirm_pending_write',
+}
+
+
 def test_default_discovery():
     server = create_server()
-    assert set(tools(server)) == {'list_records', 'get_record', 'create_task', 'create_incident', 'confirm_pending_write'} | AGILE_TOOLS
+    assert set(tools(server)) == {'list_records', 'get_record'} | SERVICE_DESK_TOOLS | AGILE_TOOLS
     assert {p.name for p in asyncio.run(server.list_prompts())} == {'get_incident'}
 
 
 @pytest.mark.parametrize('features, expected', [
     (' common, common ', {'list_records', 'get_record'}),
-    ('service_desk', {'create_task', 'create_incident', 'confirm_pending_write'}),
+    ('service_desk', SERVICE_DESK_TOOLS),
     ('product_owner', AGILE_TOOLS | {'confirm_pending_write'}),
     ('developer', set()),
 ])

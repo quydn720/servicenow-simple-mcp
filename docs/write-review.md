@@ -59,3 +59,12 @@ the server might already have committed the record.
 When adding a write tool, use `@return_write_errors` and route the validated
 payload through `await preview_write(...)` from `src/servicenow_mcp/tools/write_review.py`.
 Do not call the client's insert or update methods directly from tools.
+
+## Incident journal updates
+
+`update_incident_journal` prepares `work_notes`, `comments`, or both for one
+incident. Each confirmed nonblank value appends a journal entry; it does not
+replace or erase earlier entries. Work notes are internal; comments can be
+customer-visible and trigger instance notifications. The preview contains the
+exact entries and target sys_id. It uses the same expiration, cancellation,
+session binding, replay rejection, and unknown-outcome recovery as other writes.

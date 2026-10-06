@@ -1,0 +1,663 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "expires_in_seconds": {
+          "const": 600,
+          "description": "Lifetime in seconds at preview creation.",
+          "title": "Expires In Seconds",
+          "type": "integer"
+        },
+        "message": {
+          "description": "Explicit review and confirmation instructions.",
+          "title": "Message",
+          "type": "string"
+        },
+        "preview": {
+          "additionalProperties": false,
+          "description": "Complete saved operation to review.",
+          "properties": {
+            "fields": {
+              "additionalProperties": false,
+              "description": "Exact normalized payload saved for review.",
+              "minProperties": 1,
+              "properties": {
+                "comments": {
+                  "description": "Nonblank journal entry, trimmed, up to 4000 characters; appends rather than clears history.",
+                  "maxLength": 4000,
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "title": "Comments",
+                  "type": "string"
+                },
+                "work_notes": {
+                  "description": "Nonblank journal entry, trimmed, up to 4000 characters; appends rather than clears history.",
+                  "maxLength": 4000,
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "title": "Work Notes",
+                  "type": "string"
+                }
+              },
+              "title": "IncidentJournalFields",
+              "type": "object"
+            },
+            "operation": {
+              "const": "update",
+              "description": "Proposed operation.",
+              "title": "Operation",
+              "type": "string"
+            },
+            "sys_id": {
+              "description": "Raw target record ID.",
+              "pattern": "^[0-9a-fA-F]{32}$",
+              "title": "Sys Id",
+              "type": "string"
+            },
+            "table": {
+              "const": "incident",
+              "description": "Target ServiceNow table.",
+              "title": "Table",
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "table",
+            "fields",
+            "sys_id"
+          ],
+          "title": "IncidentJournalFieldsPreview",
+          "type": "object"
+        },
+        "preview_id": {
+          "description": "Opaque single-use server/session-bound ID.",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Preview Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "awaiting_confirmation",
+          "description": "No ServiceNow request was made.",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "preview_id",
+        "preview",
+        "expires_in_seconds",
+        "message"
+      ],
+      "title": "IncidentJournalFieldsPreviewResult",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Stable error code.",
+          "enum": [
+            "VALIDATION_ERROR",
+            "AUTHENTICATION_REQUIRED",
+            "PERMISSION_DENIED",
+            "NOT_FOUND",
+            "RAW_QUERY_PROHIBITED",
+            "CONFIRMATION_INVALID",
+            "SESSION_REQUIRED",
+            "PREVIEW_LIMIT_EXCEEDED",
+            "UPSTREAM_ERROR",
+            "TIMEOUT",
+            "INTERNAL_ERROR"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "http_status": {
+          "description": "Upstream HTTP status when safely available.",
+          "maximum": 599,
+          "minimum": 100,
+          "title": "Http Status",
+          "type": "integer"
+        },
+        "message": {
+          "description": "Safe explanation and recovery guidance; never raw exception text.",
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "outcome": {
+          "description": "not_attempted: no record operation dispatched; failed: definitive failure; unknown: a dispatched write may have committed.",
+          "enum": [
+            "not_attempted",
+            "failed",
+            "unknown"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "preview": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "properties": {
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "short_description"
+                  ],
+                  "title": "IncidentCreateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "insert",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "incident",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields"
+              ],
+              "title": "IncidentCreateFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "minProperties": 1,
+                  "properties": {
+                    "comments": {
+                      "description": "Nonblank journal entry, trimmed, up to 4000 characters; appends rather than clears history.",
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Comments",
+                      "type": "string"
+                    },
+                    "work_notes": {
+                      "description": "Nonblank journal entry, trimmed, up to 4000 characters; appends rather than clears history.",
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Work Notes",
+                      "type": "string"
+                    }
+                  },
+                  "title": "IncidentJournalFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "update",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "sys_id": {
+                  "description": "Raw target record ID.",
+                  "pattern": "^[0-9a-fA-F]{32}$",
+                  "title": "Sys Id",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "incident",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields",
+                "sys_id"
+              ],
+              "title": "IncidentJournalFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "properties": {
+                    "assignment_group": {
+                      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+                      "pattern": "^[0-9a-fA-F]{32}$",
+                      "title": "Assignment Group",
+                      "type": "string"
+                    },
+                    "description": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "description": "Raw priority choice code; 1 is highest and 5 lowest.",
+                      "enum": [
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                      ],
+                      "title": "Priority",
+                      "type": "string"
+                    },
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "short_description",
+                    "priority"
+                  ],
+                  "title": "TaskCreateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "insert",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "task",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields"
+              ],
+              "title": "TaskCreateFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "properties": {
+                    "acceptance_criteria": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Acceptance Criteria",
+                      "type": "string"
+                    },
+                    "description": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "epic": {
+                      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+                      "pattern": "^[0-9a-fA-F]{32}$",
+                      "title": "Epic",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "description": "Raw priority choice code; 1 is highest and 5 lowest.",
+                      "enum": [
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                      ],
+                      "title": "Priority",
+                      "type": "string"
+                    },
+                    "product": {
+                      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+                      "pattern": "^[0-9a-fA-F]{32}$",
+                      "title": "Product",
+                      "type": "string"
+                    },
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    },
+                    "story_points": {
+                      "description": "Story points, an integer from 0 to 100.",
+                      "maximum": 100,
+                      "minimum": 0,
+                      "title": "Story Points",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "short_description",
+                    "priority"
+                  ],
+                  "title": "StoryCreateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "insert",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "rm_story",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields"
+              ],
+              "title": "StoryCreateFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "properties": {
+                    "description": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "description": "Raw priority choice code; 1 is highest and 5 lowest.",
+                      "enum": [
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                      ],
+                      "title": "Priority",
+                      "type": "string"
+                    },
+                    "product": {
+                      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+                      "pattern": "^[0-9a-fA-F]{32}$",
+                      "title": "Product",
+                      "type": "string"
+                    },
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "short_description",
+                    "priority"
+                  ],
+                  "title": "EpicCreateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "insert",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "rm_epic",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields"
+              ],
+              "title": "EpicCreateFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "minProperties": 1,
+                  "properties": {
+                    "acceptance_criteria": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Acceptance Criteria",
+                      "type": "string"
+                    },
+                    "description": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "epic": {
+                      "description": "Raw reference sys_id; an empty string clears the reference.",
+                      "pattern": "^(?:[0-9a-fA-F]{32})?$",
+                      "title": "Epic",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "description": "Raw priority choice code; 1 is highest and 5 lowest.",
+                      "enum": [
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                      ],
+                      "title": "Priority",
+                      "type": "string"
+                    },
+                    "product": {
+                      "description": "Raw reference sys_id; an empty string clears the reference.",
+                      "pattern": "^(?:[0-9a-fA-F]{32})?$",
+                      "title": "Product",
+                      "type": "string"
+                    },
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    },
+                    "story_points": {
+                      "description": "Story points, an integer from 0 to 100.",
+                      "maximum": 100,
+                      "minimum": 0,
+                      "title": "Story Points",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "StoryUpdateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "update",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "sys_id": {
+                  "description": "Raw target record ID.",
+                  "pattern": "^[0-9a-fA-F]{32}$",
+                  "title": "Sys Id",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "rm_story",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields",
+                "sys_id"
+              ],
+              "title": "StoryUpdateFieldsPreview",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "fields": {
+                  "additionalProperties": false,
+                  "description": "Exact normalized payload saved for review.",
+                  "minProperties": 1,
+                  "properties": {
+                    "description": {
+                      "description": "Text up to 4000 characters after trimming; empty string clears on update.",
+                      "maxLength": 4000,
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "priority": {
+                      "description": "Raw priority choice code; 1 is highest and 5 lowest.",
+                      "enum": [
+                        "1",
+                        "2",
+                        "3",
+                        "4",
+                        "5"
+                      ],
+                      "title": "Priority",
+                      "type": "string"
+                    },
+                    "product": {
+                      "description": "Raw reference sys_id; an empty string clears the reference.",
+                      "pattern": "^(?:[0-9a-fA-F]{32})?$",
+                      "title": "Product",
+                      "type": "string"
+                    },
+                    "short_description": {
+                      "description": "Required nonblank summary, up to 160 characters after trimming.",
+                      "maxLength": 160,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "title": "Short Description",
+                      "type": "string"
+                    }
+                  },
+                  "title": "EpicUpdateFields",
+                  "type": "object"
+                },
+                "operation": {
+                  "const": "update",
+                  "description": "Proposed operation.",
+                  "title": "Operation",
+                  "type": "string"
+                },
+                "sys_id": {
+                  "description": "Raw target record ID.",
+                  "pattern": "^[0-9a-fA-F]{32}$",
+                  "title": "Sys Id",
+                  "type": "string"
+                },
+                "table": {
+                  "const": "rm_epic",
+                  "description": "Target ServiceNow table.",
+                  "title": "Table",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "table",
+                "fields",
+                "sys_id"
+              ],
+              "title": "EpicUpdateFieldsPreview",
+              "type": "object"
+            }
+          ],
+          "description": "Exact saved preview when available.",
+          "title": "Preview"
+        },
+        "retry_guidance": {
+          "description": "Reconciliation or fresh-preview recovery guidance.",
+          "title": "Retry Guidance",
+          "type": "string"
+        },
+        "retryable": {
+          "description": "Whether repeating the unchanged call is safe and potentially useful; always false for writes.",
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "status": {
+          "const": "error",
+          "description": "Tool execution failed.",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "code",
+        "message",
+        "retryable",
+        "outcome"
+      ],
+      "title": "WriteError",
+      "type": "object"
+    }
+  ],
+  "type": "object"
+}

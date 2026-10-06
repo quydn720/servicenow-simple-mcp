@@ -42,7 +42,7 @@ def test_all_discovered_contracts_are_explicit_and_self_contained(server):
     async def run():
         async with Client(mcp, mode="legacy") as connection:
             tools = await connection.list_tools()
-            assert len(tools) == 15
+            assert len(tools) == 20
             for tool in tools:
                 assert tool.input_schema["$schema"] == DIALECT
                 assert tool.input_schema["additionalProperties"] is False

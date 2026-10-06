@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "knowledge_base": {
+      "anyOf": [
+        {
+          "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+          "pattern": "^[0-9a-fA-F]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Raw 32-character hexadecimal ServiceNow sys_id; never a display name."
+    },
+    "limit": {
+      "default": 10,
+      "description": "Maximum returned records, from 1 to 100; default 10. No pagination.",
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "search_text": {
+      "description": "Literal title substring, 1\u2013160 characters after trimming. No encoded-query delimiters, control characters, or javascript expressions.",
+      "maxLength": 160,
+      "minLength": 1,
+      "not": {
+        "pattern": "[jJ][aA][vV][aA][sS][cC][rR][iI][pP][tT]\\s*:"
+      },
+      "pattern": "^[^\\x00-\\x1f\\x7f^]+$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "search_text"
+  ],
+  "type": "object"
+}

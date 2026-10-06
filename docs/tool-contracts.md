@@ -1,7 +1,7 @@
 # Implemented MCP tool contracts
 
 The authoritative definitions are in `src/servicenow_mcp/tools/contracts.py`.
-All 15 tools publish JSON Schema 2020-12 inputs and explicit outputs in discovery.
+All 20 tools publish JSON Schema 2020-12 inputs and explicit outputs in discovery.
 Registration through `contract_tool` validates direct and MCP calls and validates
 structured results. Discovery needs no credentials or ServiceNow requests.
 These contracts also apply to the remote `get_record` and `list_records` tools.
@@ -39,6 +39,8 @@ instance calls and does not change ServiceNow ACLs.
 | Story get/list/write; rm_story | sys_id, number, short_description, description, acceptance_criteria, story_points, priority, product, epic |
 | Epic get/list/write; rm_epic | sys_id, number, short_description, description, product, priority |
 | Product get/list; cmdb_model | sys_id, name |
+| Knowledge search; kb_knowledge | sys_id, number, short_description, kb_knowledge_base, workflow_state, active, valid_to, sys_updated_on |
+| Change status; change_request | sys_id, number, short_description, state, approval, type, sys_updated_on |
 
 Read requests send explicit fieldsets to ServiceNow. Returned records are
 projected to the selected fields plus sys_id. Write results are projected to the
@@ -79,10 +81,12 @@ parse typed results into models; use `structured_content` for the JSON object.
 All tool output schemas include the standard error variant. See
 [error handling](error-handling.md) for codes, outcomes, and client compatibility.
 Typed contracts, validation, and standard errors do not establish full standards
-compliance. Per-tool permission review, contract versions/snapshots,
+compliance. Per-tool permission review, versions/snapshots for the older tools,
 and deprecation/migration governance remain separate work. The original standard's
 read/write examples are illustrative target contracts, not substitutes for these
-runtime definitions. Raw-query exceptions and structured filters remain disabled.
+runtime definitions. Raw-query exceptions remain disabled. The new service-desk
+searches accept only typed literal values, not arbitrary encoded queries. See
+[service-desk specifications and initial schema snapshots](service-desk-tools.md).
 
 ## Published descriptions
 

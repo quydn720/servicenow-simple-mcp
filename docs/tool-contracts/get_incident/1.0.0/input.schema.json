@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "sys_id": {
+      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+      "pattern": "^[0-9a-fA-F]{32}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sys_id"
+  ],
+  "type": "object"
+}

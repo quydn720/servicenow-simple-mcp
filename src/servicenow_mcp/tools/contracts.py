@@ -134,6 +134,25 @@ EPIC_FIELDS = (
     "priority",
 )
 PRODUCT_FIELDS = ("sys_id", "name")
+KNOWLEDGE_FIELDS = (
+    "sys_id",
+    "number",
+    "short_description",
+    "kb_knowledge_base",
+    "workflow_state",
+    "active",
+    "valid_to",
+    "sys_updated_on",
+)
+CHANGE_STATUS_FIELDS = (
+    "sys_id",
+    "number",
+    "short_description",
+    "state",
+    "approval",
+    "type",
+    "sys_updated_on",
+)
 CommonFields = Annotated[
     list[Literal[*COMMON_FIELDS]],
     Field(
@@ -177,6 +196,7 @@ FIELDS_BY_TABLE = {
     "rm_story": STORY_FIELDS,
     "rm_epic": EPIC_FIELDS,
     "cmdb_model": PRODUCT_FIELDS,
+    "kb_knowledge": KNOWLEDGE_FIELDS,
 }
 
 
@@ -187,7 +207,14 @@ class ContractModel(BaseModel):
 def record_type(name, fields):
     # ServiceNow Table API emits raw choice/number/boolean fields as strings.
     declarations = {}
-    references = {"assignment_group", "assigned_to", "caller_id", "product", "epic"}
+    references = {
+        "assignment_group",
+        "assigned_to",
+        "caller_id",
+        "product",
+        "epic",
+        "kb_knowledge_base",
+    }
     for field in fields:
         if field == "sys_id":
             declarations[field] = (SysId, Field(description="Raw record identifier."))
@@ -211,6 +238,8 @@ CommonRecord = record_type("CommonRecord", COMMON_FIELDS)
 StoryRecord = record_type("StoryRecord", STORY_FIELDS)
 EpicRecord = record_type("EpicRecord", EPIC_FIELDS)
 ProductRecord = record_type("ProductRecord", PRODUCT_FIELDS)
+KnowledgeRecord = record_type("KnowledgeRecord", KNOWLEDGE_FIELDS)
+ChangeStatusRecord = record_type("ChangeStatusRecord", CHANGE_STATUS_FIELDS)
 RECORD_TYPES = {
     **dict.fromkeys(
         ("incident", "task", "sc_task", "problem", "change_request"), CommonRecord
@@ -218,6 +247,7 @@ RECORD_TYPES = {
     "rm_story": StoryRecord,
     "rm_epic": EpicRecord,
     "cmdb_model": ProductRecord,
+    "kb_knowledge": KnowledgeRecord,
 }
 
 
@@ -230,6 +260,27 @@ class TaskCreateFields(ContractModel):
 
 class IncidentCreateFields(ContractModel):
     short_description: Summary
+
+
+JournalText = Annotated[
+    str,
+    Field(
+        strict=True,
+        min_length=1,
+        max_length=4000,
+        pattern=r"\S",
+        description="Nonblank journal entry, trimmed, up to 4000 characters; appends rather than clears history.",
+    ),
+    BeforeValidator(lambda v: v.strip() if isinstance(v, str) else v),
+]
+
+
+class IncidentJournalFields(ContractModel):
+    model_config = ConfigDict(
+        extra="forbid", strict=True, json_schema_extra={"minProperties": 1}
+    )
+    work_notes: JournalText = None
+    comments: JournalText = None
 
 
 class EpicCreateFields(ContractModel):
@@ -263,6 +314,7 @@ class StoryUpdateFields(EpicUpdateFields):
 
 PAYLOAD_TYPES = {
     ("incident", "insert"): IncidentCreateFields,
+    ("incident", "update"): IncidentJournalFields,
     ("task", "insert"): TaskCreateFields,
     ("rm_story", "insert"): StoryCreateFields,
     ("rm_epic", "insert"): EpicCreateFields,
@@ -332,6 +384,9 @@ for entity, record, table in (
     ("story", StoryRecord, Literal["rm_story"]),
     ("epic", EpicRecord, Literal["rm_epic"]),
     ("product", ProductRecord, Literal["cmdb_model"]),
+    ("incident", CommonRecord, Literal["incident"]),
+    ("knowledge", KnowledgeRecord, Literal["kb_knowledge"]),
+    ("change_status", ChangeStatusRecord, Literal["change_request"]),
 ):
     READ_RESULTS[entity, "get"] = result_type(
         f"{entity.title()}GetResult", record, table
@@ -424,7 +479,14 @@ def normalize_payload(table, operation, payload):
     normalized = {
         key: value.strip()
         if isinstance(value, str)
-        and key in {"short_description", "description", "acceptance_criteria"}
+        and key
+        in {
+            "short_description",
+            "description",
+            "acceptance_criteria",
+            "work_notes",
+            "comments",
+        }
         else value
         for key, value in payload.items()
     }
@@ -453,7 +515,7 @@ class ContractFunctionTool(FunctionTool):
         return super().convert_result(value)
 
 
-def contract_tool(mcp, output, **metadata):
+def contract_tool(mcp, output, *, input_schema_extra=None, **metadata):
     """Publish schemas and validate direct and MCP invocations and results."""
     adapter = TypeAdapter(output | WriteError)
     schema = {"$schema": DIALECT, "type": "object", **adapter.json_schema()}
@@ -550,6 +612,8 @@ def contract_tool(mcp, output, **metadata):
                 prop["description"] = (
                     f"Optional; null leaves this value unspecified. {description}"
                 )
+        if input_schema_extra:
+            tool.parameters.update(input_schema_extra)
         mcp.add_tool(tool)
         return wrapped
 

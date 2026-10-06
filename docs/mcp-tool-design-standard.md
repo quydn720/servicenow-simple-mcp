@@ -536,12 +536,15 @@ MUST NOT be described as fully compliant merely because this standard exists.
 - Common and Agile list tools now reject every supplied `query` string with a
   `RAW_QUERY_PROHIBITED` tool error before client creation. Omitted/null queries
   remain supported. The internal client can still build query requests, but MCP
-  list tools do not forward caller queries. Structured filters and trusted
-  owner-exception execution remain unimplemented; no approval can enable that
+  list tools do not forward caller queries. The service-desk searches
+  now translate validated literal arguments into internal queries; generic filters
+  and trusted owner-exception execution remain unimplemented; no approval can enable that
   capability until those controls are implemented and reviewed.
-- All 15 tools now publish explicit field-level input/output schemas and validate
+- All 20 tools now publish explicit field-level input/output schemas and validate
   arguments/results through `tools/contracts.py`. See [implemented contracts](tool-contracts.md).
-  Per-tool semantic versions and released schema snapshots remain to be introduced.
+  The five new service-desk tools have initial 1.0.0 specifications and schema
+  snapshots; per-tool versions and snapshots for the older tools remain to be
+  introduced. See [service-desk specifications](service-desk-tools.md).
 - IDs, field allowlists, limits, priority choices, and text bounds are validated.
   Instance-specific lengths/choices, identity checks, and permission specifications
   still require review and live-instance verification.
@@ -549,7 +552,7 @@ MUST NOT be described as fully compliant merely because this standard exists.
   with MCP `isError: true`; all output schemas cover errors. HTTP failures,
   transport failures, and ambiguous writes are classified explicitly. Upstream
   response details and raw exception text are not returned. See [error handling](error-handling.md).
-- All 15 published tool descriptions now identify supported tables/fields, result
+- All 20 published tool descriptions now identify supported tables/fields, result
   bounds, unsupported operations, read/write behavior, and retry restrictions.
   Write descriptions disclose preview expiration, subsequent-reply approval,
   session/single-use limitations, and the lack of independently verified human

@@ -28,5 +28,9 @@ versioning rules for breaking changes and its checklist for review requirements.
 4. Add mocked tests for discovery, inputs, payloads, and responses. Preserve
    existing MCP names and schemas when extending current use cases.
 
-The developer package is an extension point only. Incident updates and catalog
-modifications are not implemented.
+The service-desk package groups incident search/details/creation/journal updates
+in `incidents.py`, published knowledge summary search in `knowledge.py`, and
+change status retrieval in `changes.py`. `search.py` validates literal structured
+search values before internally building queries. See the
+[service-desk specifications](service-desk-tools.md). The developer package remains
+an extension point; catalog modifications are not implemented.

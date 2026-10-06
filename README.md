@@ -191,13 +191,14 @@ strings, with a `RAW_QUERY_PROHIBITED` tool error before creating a ServiceNow
 client. This applies to local tools and the remote `list_records` tool.
 The argument is retained for clear rejection of older client calls; omit it or
 pass `null` for unfiltered lists. Existing callers that supply queries must
-change their calls. Structured filters and owner-approved exception execution
+change their calls. The service-desk searches accept bounded structured search arguments and build
+queries internally. Generic filters and owner-approved exception execution
 are not implemented, so approval alone cannot enable raw queries. This is a
 security restriction; remaining contract migrations are separate work.
 
 ### Typed tool contracts
 
-All 15 local tools (and the two shared remote read tools) publish explicit
+All 20 local tools (and the two shared remote read tools) publish explicit
 input/output schemas and validate arguments and results. See
 [implemented tool contracts](docs/tool-contracts.md) for field allowlists,
 limits, result variants, and compatibility changes. Existing names and response
@@ -207,6 +208,14 @@ oversized text, and limits outside 1–100 are now rejected.
 Tool execution failures return a structured standard error with MCP `isError: true`.
 See [error handling and recovery](docs/error-handling.md), especially the migration
 note for clients that previously received write failures as successful MCP calls.
+
+### Service-desk workflows
+
+See the [service-desk tool specifications](docs/service-desk-tools.md) for
+contracts, permissions, search limitations, and examples. Tools are organized
+in `tools/service_desk/incidents.py`, `knowledge.py`, and `changes.py`. Incident
+creation reuses the existing `create_incident`; journal updates prepare an append
+preview and require `confirm_pending_write` after explicit approval.
 
 ## Authentication
 
@@ -221,7 +230,7 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | Group | Registered tools and prompts |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `create_incident`, `create_task`, `get_incident` prompt |
+| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
 | `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 

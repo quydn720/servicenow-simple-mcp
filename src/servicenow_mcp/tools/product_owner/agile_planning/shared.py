@@ -89,10 +89,10 @@ def register_reads(
             sys_id=sys_id,
             fields=selected,
         )
-        record = project_record(record, table, selected)
-        if record["sys_id"].lower() != sys_id.lower():
+        if not isinstance(record, dict) or str(record.get("sys_id", "")).lower() != sys_id.lower():
             raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        return {"table": table, "sys_id": sys_id, "record": record}
+        record = project_record(record, table, selected)
+        return {"table": table, "record": record}
 
     @contract_tool(
         mcp,

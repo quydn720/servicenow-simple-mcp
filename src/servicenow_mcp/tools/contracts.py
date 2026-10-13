@@ -159,7 +159,7 @@ CommonFields = Annotated[
         min_length=1,
         max_length=len(COMMON_FIELDS),
         json_schema_extra={"uniqueItems": True},
-        description="Nonempty allowlisted field selection; defaults to declared common fields. References are returned as display names.",
+        description="Nonempty allowlisted field selection; defaults to declared common fields. sys_id may be selected for validation but is never returned; returned fields use display values.",
     ),
 ]
 StoryFields = Annotated[
@@ -168,7 +168,7 @@ StoryFields = Annotated[
         min_length=1,
         max_length=len(STORY_FIELDS),
         json_schema_extra={"uniqueItems": True},
-        description="Nonempty allowlisted story fields; defaults to all declared story fields.",
+        description="Nonempty allowlisted story fields; defaults to all declared story fields. sys_id is never returned; returned fields use display values.",
     ),
 ]
 EpicFields = Annotated[
@@ -177,7 +177,7 @@ EpicFields = Annotated[
         min_length=1,
         max_length=len(EPIC_FIELDS),
         json_schema_extra={"uniqueItems": True},
-        description="Nonempty allowlisted epic fields; defaults to all declared epic fields.",
+        description="Nonempty allowlisted epic fields; defaults to all declared epic fields. sys_id is never returned; returned fields use display values.",
     ),
 ]
 ProductFields = Annotated[
@@ -186,7 +186,7 @@ ProductFields = Annotated[
         min_length=1,
         max_length=len(PRODUCT_FIELDS),
         json_schema_extra={"uniqueItems": True},
-        description="Nonempty allowlisted product fields; defaults to sys_id and name.",
+        description="Nonempty allowlisted product fields; defaults to sys_id and name. sys_id is never returned.",
     ),
 ]
 FIELDS_BY_TABLE = {
@@ -205,7 +205,7 @@ class ContractModel(BaseModel):
 
 
 def record_type(name, fields):
-    # ServiceNow Table API emits raw choice/number/boolean fields as strings.
+    # sys_id is validated internally but is not part of user-facing records.
     declarations = {}
     references = {
         "assignment_group",
@@ -217,20 +217,21 @@ def record_type(name, fields):
     }
     for field in fields:
         if field == "sys_id":
-            declarations[field] = (SysId, Field(description="Raw record identifier."))
-        else:
-            description = (
-                "Reference display name."
-                if field in references
-                else "ServiceNow field value as a string."
+            continue
+        description = (
+            "ServiceNow display value."
+            if field not in {"sys_created_on", "sys_updated_on"}
+            else "ServiceNow display value for this date/time field."
+        )
+        if field in references:
+            description = "Reference display name."
+        declarations[field] = (
+            str,
+            Field(
+                default=None,
+                description=description + " Omitted when not returned.",
             )
-            declarations[field] = (
-                str,
-                Field(
-                    default=None,
-                    description=description + " Omitted when not returned.",
-                ),
-            )
+        )
     return create_model(name, __base__=ContractModel, **declarations)
 
 
@@ -368,12 +369,9 @@ def result_type(name, record, table, collection=False):
             Field(description="Bounded returned records; no pagination."),
         )
     else:
-        attrs["sys_id"] = (SysId, Field(description="Requested raw record identifier."))
         attrs["record"] = (
             record,
-            Field(
-                description="Declared record fields; its sys_id matches the requested ID."
-            ),
+            Field(description="Declared record fields with ServiceNow display values; sys_id is omitted."),
         )
     return create_model(name, __base__=ContractModel, **attrs)
 
@@ -453,7 +451,7 @@ def select_fields(fields, allowed):
         raise ValueError(
             "fields must be a nonempty, unique selection of declared fields."
         )
-    # An identifier is always returned so rows remain identifiable.
+    # Request the identifier for validation, but project_record removes it from output.
     return list(dict.fromkeys(["sys_id", *selected]))
 
 
@@ -462,11 +460,16 @@ def project_record(record, table, fields=None, *, failure_outcome="failed"):
         raise OperationError("UPSTREAM_ERROR", outcome=failure_outcome)
     selected = select_fields(fields, FIELDS_BY_TABLE[table])
     projected = {key: value for key, value in record.items() if key in selected}
+    identifier = projected.get("sys_id")
     try:
-        RECORD_TYPES[table].model_validate(projected)
+        SysIdAdapter = TypeAdapter(SysId)
+        SysIdAdapter.validate_python(identifier)
+        RECORD_TYPES[table].model_validate(
+            {key: value for key, value in projected.items() if key != "sys_id"}
+        )
     except ValidationError:
         raise OperationError("UPSTREAM_ERROR", outcome=failure_outcome) from None
-    return projected
+    return {key: value for key, value in projected.items() if key != "sys_id"}
 
 
 def project_records(records, table, fields, limit):

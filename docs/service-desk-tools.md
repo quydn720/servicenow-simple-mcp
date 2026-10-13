@@ -42,11 +42,12 @@ assertion: actual roles, scopes, and record restrictions remain instance review
 requirements. The existing lack of explicit per-tool authorization and complete
 audit records remains a [compliance gap](mcp-tool-design-standard.md#current-compliance-gaps).
 
-Read results use `{table, count, records}` for searches and
-`{table, sys_id, record}` for retrieval. Returned sys_ids stay raw; references are
-display names, other values are raw strings, and unavailable fields may be omitted.
-Outputs discard undeclared upstream fields, require a valid sys_id, check retrieved
-IDs against the requested ID, and validate types and bounds before returning.
+Read results use `{table, count, records}` for searches and `{table, record}` for
+retrieval. `sys_id` is fetched and validated internally, then omitted from returned
+record details. Returned fields use ServiceNow display values, including reference
+names and choice labels; unavailable fields may be omitted. Outputs discard
+undeclared upstream fields, require a valid sys_id, check retrieved IDs against
+the requested ID, and validate types and bounds before returning.
 Search count is the returned length, not the total; ordering is unspecified and
 there is no pagination or truncation indicator. An empty search is successful.
 
@@ -80,7 +81,7 @@ at least one non-null value required; optional `limit`. When both are present th
 are combined with AND. Search text matches only `short_description` using LIKE.
 No arbitrary filters, record writes, or approval are supported.
 
-Returned fields: sys_id, number, short_description, description, state, priority,
+Returned fields: number, short_description, description, state, priority,
 assignment_group, assigned_to, caller_id, active, sys_created_on, sys_updated_on.
 The same fieldset is used by incident details and confirmed incident writes.
 
@@ -88,7 +89,7 @@ Schemas: [input](tool-contracts/list_incidents/1.0.0/input.schema.json),
 [output](tool-contracts/list_incidents/1.0.0/output.schema.json).
 
 Example arguments: `{"search_text":"VPN","number":"INC0001","limit":10}`.
-Example result: `{"table":"incident","count":1,"records":[{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"INC0001","short_description":"VPN unavailable"}]}`.
+Example result: `{"table":"incident","count":1,"records":[{"number":"INC0001","short_description":"VPN unavailable","priority":"Low - 4","state":"New"}]}`.
 
 ## `get_incident` — 1.0.0
 
@@ -102,7 +103,7 @@ Schemas: [input](tool-contracts/get_incident/1.0.0/input.schema.json),
 [output](tool-contracts/get_incident/1.0.0/output.schema.json).
 
 Example arguments: `{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`.
-Example result: `{"table":"incident","sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","record":{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"INC0001","state":"2"}}`.
+Example result: `{"table":"incident","record":{"number":"INC0001","state":"In Progress","priority":"Low - 4"}}`.
 
 ## `list_knowledge_articles` — 1.0.0
 
@@ -113,7 +114,7 @@ Matches title (`short_description`) using LIKE, combined with fixed
 exact `kb_knowledge_base` condition. This is summary search, not a full-text,
 semantic, or Knowledge Management API search.
 
-Returned fields: sys_id, number, short_description, kb_knowledge_base,
+Returned fields: number, short_description, kb_knowledge_base,
 workflow_state, active, valid_to, sys_updated_on. Article bodies, attachments,
 drafts, and writes are unsupported. This Table API implementation relies on the
 execution identity's ACLs; it does not independently enforce portal user criteria
@@ -124,7 +125,7 @@ Schemas: [input](tool-contracts/list_knowledge_articles/1.0.0/input.schema.json)
 [output](tool-contracts/list_knowledge_articles/1.0.0/output.schema.json).
 
 Example arguments: `{"search_text":"VPN","limit":5}`.
-Example result: `{"table":"kb_knowledge","count":1,"records":[{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"KB0001","short_description":"VPN setup","workflow_state":"published","active":"true"}]}`.
+Example result: `{"table":"kb_knowledge","count":1,"records":[{"number":"KB0001","short_description":"VPN setup","workflow_state":"Published","active":"true"}]}`.
 
 ## `create_incident` — existing contract
 
@@ -172,16 +173,16 @@ entry. These same lifecycle rules apply to `create_incident`.
 ## `get_change_status` — 1.0.0
 
 Module: `tools/service_desk/changes.py`. Read-only, fixed `change_request` table.
-Required `sys_id`; returns at most one record. Supported fields: sys_id, number,
+Required `sys_id`; returns at most one record. Supported fields: number,
 short_description, state, approval, type, sys_updated_on. State, approval, and type
-are raw instance choice codes, not interpreted lifecycle labels. No approvals,
+use ServiceNow display values (lifecycle labels). No approvals,
 state transitions, updates, arbitrary filters, or pagination.
 
 Schemas: [input](tool-contracts/get_change_status/1.0.0/input.schema.json),
 [output](tool-contracts/get_change_status/1.0.0/output.schema.json).
 
 Example arguments: `{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`.
-Example result: `{"table":"change_request","sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","record":{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"CHG0001","state":"-1","approval":"requested"}}`.
+Example result: `{"table":"change_request","record":{"number":"CHG0001","state":"Implement","approval":"Requested"}}`.
 
 ## Review and verification
 

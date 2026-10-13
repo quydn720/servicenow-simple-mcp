@@ -20,8 +20,9 @@ def read_description(tables: str, fields, *, collection: bool) -> str:
     )
     return (
         purpose + f"Supported/default fields: {', '.join(fields)}. Field selection is "
-        "allowlisted; sys_id is always included. References are display names; "
-        "other returned values are raw strings and unavailable fields may be omitted. "
+        "allowlisted; sys_id is used internally to validate records and is omitted "
+        "from results. Returned fields use ServiceNow display values, including "
+        "choice labels; unavailable fields may be omitted. "
         + limits
         + "Read-only: no record writes or confirmation. Only retry errors marked "
         "retryable=true; validation, authorization, and missing-record errors "
@@ -95,7 +96,7 @@ CONFIRM_DESCRIPTION = (
     + ", ".join(STORY_FIELDS)
     + "); rm_epic ("
     + ", ".join(EPIC_FIELDS)
-    + "). sys_id is raw; references are display names, other values are raw strings "
-    "and unavailable fields may be omitted. No bulk writes, deletes, pagination, "
+    + "). Returned fields use ServiceNow display values; sys_id is omitted from "
+    "the saved record result. Unavailable fields may be omitted. No bulk writes, deletes, pagination, "
     "raw queries, or scripts."
 )

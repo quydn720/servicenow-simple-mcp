@@ -116,10 +116,12 @@ class ServiceNowClient:
 
     @staticmethod
     def _display_record(record: Dict[str, Any]) -> Dict[str, Any]:
-        """Flatten Table API field wrappers, using display names for references."""
+        """Flatten Table API wrappers to their user-facing display values."""
         return {
             field: (
-                value.get("display_value", "") if "link" in value else value["value"]
+                value["value"]
+                if field == "sys_id"
+                else value.get("display_value") or ""
             )
             if isinstance(value, dict) and "value" in value
             else value

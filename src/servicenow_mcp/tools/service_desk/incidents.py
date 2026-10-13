@@ -32,7 +32,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         description="Search incident records by a literal short_description substring, exact number, or both (AND). "
         "Supply at least one non-null search_text or number. Supported/default fields: "
         + ", ".join(COMMON_FIELDS)
-        + ". sys_id is raw, references are display names, other values are raw strings; unavailable fields may be omitted. "
+        + ". sys_id is used internally and omitted from results. Returned fields use ServiceNow display values; unavailable fields may be omitted. "
         + SEARCH_LIMITATIONS,
         input_schema_extra={
             "anyOf": [
@@ -69,13 +69,11 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         + "Incident details exclude attachments and journal/activity history.",
     )
     def get_incident(sys_id: SysId) -> dict:
-        record = project_record(
-            client_factory().get_record("incident", sys_id, fields=list(COMMON_FIELDS)),
-            "incident",
-        )
-        if record["sys_id"].lower() != sys_id.lower():
+        raw_record = client_factory().get_record("incident", sys_id, fields=list(COMMON_FIELDS))
+        if not isinstance(raw_record, dict) or str(raw_record.get("sys_id", "")).lower() != sys_id.lower():
             raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        return {"table": "incident", "sys_id": sys_id, "record": record}
+        record = project_record(raw_record, "incident", COMMON_FIELDS)
+        return {"table": "incident", "record": record}
 
     @contract_tool(
         mcp,

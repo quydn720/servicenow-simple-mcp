@@ -177,11 +177,11 @@ stop the stdio MCP server. The dashboard is bound to localhost only.
 - `get_record` — fetch one record by `sys_id`
 - `create_task` — create a task with safe required fields
 
-Returned records use display names for reference fields, such as
-`"assignment_group": "Service Desk"` and `"assigned_to": "Jane Doe"`.
-This applies to list, get, create, and update responses. The record's own
-`sys_id`, choice codes, and timestamps retain their raw values. Queries and
-write payloads still use reference sys_ids.
+Returned records use ServiceNow display values for fields, such as
+`"assignment_group": "Service Desk"`, `"priority": "Low - 4"`, and
+`"state": "Open"`. This applies to list, get, create, and update responses.
+`sys_id` is used internally for record validation but is omitted from returned
+record details. Queries and write payloads still use reference sys_ids.
 
 ### Raw-query security change
 

@@ -57,11 +57,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         table: Table, sys_id: SysId, fields: CommonFields | None = None
     ) -> dict:
         selected = select_fields(fields, COMMON_FIELDS)
-        record = project_record(
-            client_factory().get_record(table=table, sys_id=sys_id, fields=selected),
-            table,
-            selected,
-        )
-        if record["sys_id"].lower() != sys_id.lower():
+        raw_record = client_factory().get_record(table=table, sys_id=sys_id, fields=selected)
+        if not isinstance(raw_record, dict) or str(raw_record.get("sys_id", "")).lower() != sys_id.lower():
             raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        return {"table": table, "sys_id": sys_id, "record": record}
+        record = project_record(raw_record, table, selected)
+        return {"table": table, "record": record}

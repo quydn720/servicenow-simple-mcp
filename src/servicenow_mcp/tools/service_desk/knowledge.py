@@ -21,8 +21,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         "Only active articles with workflow_state=published are requested; optional knowledge_base restricts by raw kb_knowledge_base sys_id. "
         "Supported/default fields: "
         + ", ".join(KNOWLEDGE_FIELDS)
-        + ". sys_id is raw, kb_knowledge_base is a display name, "
-        "other values are raw strings; unavailable fields may be omitted. No article bodies, attachments, drafts, or knowledge writes. "
+        + ". sys_id is omitted; returned fields use ServiceNow display values, including the knowledge base label. Unavailable fields may be omitted. No article bodies, attachments, drafts, or knowledge writes. "
         "This Table API search relies on the execution identity's table/field ACLs; it does not independently enforce "
         "portal user criteria or filter valid_to dates. " + SEARCH_LIMITATIONS,
     )

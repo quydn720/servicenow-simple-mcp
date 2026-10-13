@@ -18,7 +18,7 @@ These contracts also apply to the remote `get_record` and `list_records` tools.
 | `priority` | String choice `1`–`5`; create defaults to `3`; update null/omission leaves unchanged |
 | `story_points` | Integer 0–100; boolean and string coercions rejected; optional null/omission leaves unspecified |
 | `limit` | Integer 1–100, default 10; booleans/strings rejected; no pagination |
-| `fields` | Nonempty unique list of declared fields; omission/null uses defaults; `sys_id` is always included |
+| `fields` | Nonempty unique list of declared fields; omission/null uses defaults; `sys_id` is fetched internally for validation and omitted from results |
 | `query` | Omission/null only; every string is blocked with `RAW_QUERY_PROHIBITED` |
 | `preview_id` | Nonempty string up to 128 characters; must identify a live preview in this server/session |
 | `confirmed` | Strict boolean; no replacement fields accepted |
@@ -35,26 +35,26 @@ instance calls and does not change ServiceNow ACLs.
 
 | Tools / tables | Allowed/default fields |
 | --- | --- |
-| Common get/list; incident/task write results | sys_id, number, short_description, description, state, priority, assignment_group, assigned_to, caller_id, active, sys_created_on, sys_updated_on |
-| Story get/list/write; rm_story | sys_id, number, short_description, description, acceptance_criteria, story_points, priority, product, epic |
-| Epic get/list/write; rm_epic | sys_id, number, short_description, description, product, priority |
-| Product get/list; cmdb_model | sys_id, name |
-| Knowledge search; kb_knowledge | sys_id, number, short_description, kb_knowledge_base, workflow_state, active, valid_to, sys_updated_on |
-| Change status; change_request | sys_id, number, short_description, state, approval, type, sys_updated_on |
+| Common get/list; incident/task write results | number, short_description, description, state, priority, assignment_group, assigned_to, caller_id, active, sys_created_on, sys_updated_on |
+| Story get/list/write; rm_story | number, short_description, description, acceptance_criteria, story_points, priority, product, epic |
+| Epic get/list/write; rm_epic | number, short_description, description, product, priority |
+| Product get/list; cmdb_model | name |
+| Knowledge search; kb_knowledge | number, short_description, kb_knowledge_base, workflow_state, active, valid_to, sys_updated_on |
+| Change status; change_request | number, short_description, state, approval, type, sys_updated_on |
 
-Read requests send explicit fieldsets to ServiceNow. Returned records are
-projected to the selected fields plus sys_id. Write results are projected to the
-table's declared fields. Extra fields are discarded rather than disclosed.
-Every returned record must have a valid sys_id; get results must match the
-requested ID. Other record fields may be omitted, but explicit nulls or incorrect
-types are rejected. Table API values are strings, including raw priority,
-story_points, active, and timestamps. Reference fields are display names.
+Read requests send explicit fieldsets to ServiceNow. `sys_id` is fetched,
+validated, and used to check get results against the requested ID, then omitted
+from returned records. Write results are projected to the table's declared
+fields. Extra fields are discarded rather than disclosed. Other record fields
+may be omitted, but explicit nulls or incorrect types are rejected. Returned
+field values use ServiceNow display values, including choice labels such as
+priority and state. References are display names.
 
 ## Output variants
 
 | Operation | Structured result |
 | --- | --- |
-| Get | `{table, sys_id, record}` with typed record fields |
+| Get | `{table, record}` with typed record fields; sys_id is omitted |
 | List | `{table, count, records}`; count equals returned length, length cannot exceed requested limit |
 | Create/update preparation | `{status: "awaiting_confirmation", preview_id, preview, expires_in_seconds: 600, message}` or standard error |
 | Confirmation success | `{table, record}` with table-specific record fields |
@@ -74,8 +74,9 @@ Tool names and successful JSON envelope shapes are retained. Clients must adjust
 if they used malformed IDs, invalid priority codes, oversized text, arbitrary
 fields, duplicate/empty fieldsets, out-of-range limits, or coercible non-string/
 non-integer arguments. Common reads now default to the declared narrow fieldset;
-clients relying on undeclared output fields must stop doing so. `sys_id` is
-always returned even when not explicitly selected. FastMCP Python clients may
+clients relying on undeclared output fields must stop doing so. `sys_id` remains
+an allowable selection value for internal validation, but is never returned.
+FastMCP Python clients may
 parse typed results into models; use `structured_content` for the JSON object.
 
 All tool output schemas include the standard error variant. See
@@ -91,8 +92,8 @@ searches accept only typed literal values, not arbitrary encoded queries. See
 ## Published descriptions
 
 All tool descriptions identify their supported tables and fields, bounded results,
-unsupported operations, and retry restrictions. Read tools disclose display-name
-references and raw string values. List tools disclose ServiceNow-determined order,
+unsupported operations, and retry restrictions. Read tools disclose ServiceNow
+display values, including reference names and choice labels. List tools disclose ServiceNow-determined order,
 no pagination, and no total count or truncation indicator.
 
 Write preparation and confirmation descriptions state the 600-second lifetime,

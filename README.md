@@ -7,7 +7,8 @@ through corporate SSO, with approved MCP client callbacks and encrypted token
 storage. It can be added to Claude as a custom connector. It offers the common
 record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
 `python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
-server described below remains available.
+server described below remains available. To run it as a container, see
+[deploying the remote server](docs/deployment.md).
 
 This project is a starter Model Context Protocol (MCP) server for a ServiceNow Personal Developer Instance (PDI). It exposes a small set of safe tools for reading and creating records while keeping the default scope narrow and secure.
 

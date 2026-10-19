@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
+from starlette.responses import JSONResponse
 from servicenow_mcp.config.environment import load_environment
 from servicenow_mcp.servers.base import ErrorReportingServer
 from key_value.aio.stores.filetree import FileTreeStore
@@ -35,24 +36,44 @@ def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=
     )
     client_factory = user_client_factory(settings)
     register(server, client_factory)
+
+    @server.custom_route("/healthz", methods=["GET"], include_in_schema=False)
+    async def healthz(request):
+        # Liveness only: no ServiceNow call, no storage access, no details.
+        return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
+
     # Write previews are session-bound and unsupported over stateless HTTP.
     service_desk.register_reads(server, client_factory)
     return server
 
 
+def bind_address() -> tuple[str, int]:
+    """Listen address; containers set POC_BIND_HOST=0.0.0.0 behind their proxy."""
+    host = os.getenv("POC_BIND_HOST", "127.0.0.1").strip()
+    port = os.getenv("POC_BIND_PORT", "8000").strip()
+    if not host or any(c.isspace() for c in host):
+        raise ValueError("POC_BIND_HOST must be a host name or IP address")
+    if not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise ValueError("POC_BIND_PORT must be a port number from 1 to 65535")
+    return host, int(port)
+
+
 def main():
     load_environment(remote=True)
     settings = RemoteSettings.from_env()
+    host, port = bind_address()
     # Single worker, persistent encrypted state. TLS terminates at the proxy.
     os.umask(0o077)
     server = create_remote_server(settings)
     server.run(
-        transport="http", host="127.0.0.1", port=8000, path="/mcp",
+        transport="http", host=host, port=port, path="/mcp",
         stateless_http=True, json_response=True,
         # OAuth callbacks include authorization codes in their query string.
         uvicorn_config={"access_log": False},
         host_origin_protection=True,
-        allowed_hosts=[urlparse(settings.public_url).netloc, "127.0.0.1:8000"],
+        # Local health checks use the loopback names; everything else must
+        # arrive with the public host name.
+        allowed_hosts=[urlparse(settings.public_url).netloc, f"127.0.0.1:{port}", f"localhost:{port}"],
         allowed_origins=[settings.public_url],
     )
 

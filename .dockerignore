@@ -1,0 +1,18 @@
+# Never send secrets, local state, or build output to the image build.
+.env
+.env.*
+!.env.example
+!.env.remote.example
+.oauth-poc
+.venv
+.venv-*
+dist
+build
+**/__pycache__
+**/*.pyc
+.git
+.github
+tests
+docs
+deploy
+servicenow

@@ -7,6 +7,9 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
+SESSION_LIFETIME_MIN = 3600  # 1 hour
+SESSION_LIFETIME_MAX = 30 * 86400  # 30 days
+
 
 def https_origin(value: str, name: str) -> str:
     parsed = urlparse(value)
@@ -31,6 +34,9 @@ class RemoteSettings:
     # This broker is a confidential upstream client. Some ServiceNow releases
     # interpret a PKCE challenge as public-client mode and reject client_secret.
     forward_pkce: bool = False
+    # ServiceNow returns no refresh-token expiry, so this caps how long a client
+    # sign-in lasts before the user must sign in again.
+    session_lifetime_seconds: int = 86400
 
     def __post_init__(self):
         object.__setattr__(self, "instance", https_origin(self.instance, "POC_SERVICENOW_INSTANCE"))
@@ -51,6 +57,10 @@ class RemoteSettings:
             if (not parsed.hostname or parsed.username or parsed.password or parsed.fragment
                     or "*" in uri or (parsed.scheme != "https" and not loopback)):
                 raise ValueError("Client callbacks must be exact HTTPS or loopback HTTP URLs; no wildcards")
+        if not SESSION_LIFETIME_MIN <= self.session_lifetime_seconds <= SESSION_LIFETIME_MAX:
+            raise ValueError(
+                f"POC_SESSION_LIFETIME_SECONDS must be {SESSION_LIFETIME_MIN}-{SESSION_LIFETIME_MAX}"
+            )
         if (not self.identity_path.startswith("/api/") or ".." in self.identity_path
                 or any(c in self.identity_path for c in "?#\\")):
             raise ValueError("POC_IDENTITY_PATH must be an absolute ServiceNow API path")
@@ -63,6 +73,9 @@ class RemoteSettings:
                 raise ValueError(f"Missing configuration: {name}")
             return value
 
+        lifetime = os.getenv("POC_SESSION_LIFETIME_SECONDS", "86400").strip()
+        if not lifetime.isdigit():
+            raise ValueError("POC_SESSION_LIFETIME_SECONDS must be a whole number of seconds")
         pkce = os.getenv("POC_FORWARD_PKCE", "false").lower()
         if pkce not in ("true", "false"):
             raise ValueError("POC_FORWARD_PKCE must be true or false")
@@ -77,4 +90,5 @@ class RemoteSettings:
             identity_path=os.getenv("POC_IDENTITY_PATH", "/api/x_mcp_poc/identity/me"),
             storage_dir=Path(os.getenv("POC_STORAGE_DIR", ".oauth-poc")),
             forward_pkce=pkce == "true",
+            session_lifetime_seconds=int(lifetime),
         )

@@ -426,7 +426,38 @@ def test_encrypted_storage_survives_restart(settings):
 @pytest.mark.parametrize("changes", [{"instance": "http://instance.example.com"},
     {"public_url": "https://mcp.example.com/mcp"}, {"allowed_redirects": ()},
     {"allowed_redirects": ("https://*.example.com/callback",)}, {"signing_key": "short"},
-    {"identity_path": "https://evil.example/me"}])
+    {"identity_path": "https://evil.example/me"}, {"session_lifetime_seconds": 3599},
+    {"session_lifetime_seconds": 30 * 86400 + 1}])
 def test_invalid_configuration(settings, changes):
     with pytest.raises(ValueError):
         replace(settings, **changes)
+
+
+@pytest.mark.parametrize("value,expected", [(None, 86400), ("3600", 3600), ("2592000", 2592000)])
+def test_session_lifetime_sets_the_sign_in_length(settings, monkeypatch, value, expected):
+    from servicenow_mcp.auth.servicenow_remote import create_auth
+    env = {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
+           "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+           "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
+           "POC_ALLOWED_REDIRECT_URIS": CALLBACK}
+    for name, item in env.items():
+        monkeypatch.setenv(name, item)
+    if value is None:
+        monkeypatch.delenv("POC_SESSION_LIFETIME_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("POC_SESSION_LIFETIME_SECONDS", value)
+    loaded = RemoteSettings.from_env()
+    assert loaded.session_lifetime_seconds == expected
+    auth = create_auth(loaded, MemoryStore())
+    assert auth._fallback_refresh_token_expiry_seconds == expected
+
+
+@pytest.mark.parametrize("value", ["1 day", "-5", "3600.5"])
+def test_session_lifetime_must_be_whole_seconds(settings, monkeypatch, value):
+    for name, item in {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
+                       "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+                       "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
+                       "POC_ALLOWED_REDIRECT_URIS": CALLBACK, "POC_SESSION_LIFETIME_SECONDS": value}.items():
+        monkeypatch.setenv(name, item)
+    with pytest.raises(ValueError):
+        RemoteSettings.from_env()

@@ -157,6 +157,20 @@ The POC uses stateless HTTP with JSON responses for these request/response tools
 It has no GET notification stream and no legacy `/sse` endpoint. OAuth grant
 state is persistent even though MCP transport sessions are stateless.
 
+## Token lifetimes
+
+Three lifetimes apply. Get the values approved by security before production
+and record the approved settings here.
+
+| Lifetime | Set by | Default | Effect |
+| --- | --- | --- | --- |
+| ServiceNow access token | OAuth app **Access Token Lifespan** in ServiceNow | 1,800 s (30 min) | The broker refreshes it transparently. Every request is also checked against the identity endpoint, so revoking a user takes effect on their next request. |
+| Client sign-in (broker refresh token) | `POC_SESSION_LIFETIME_SECONDS` | 86,400 s (24 h) | How long Claude stays signed in before the user signs in again. Allowed range: 1 hour to 30 days. ServiceNow returns no refresh-token expiry, so this setting decides. |
+| ServiceNow refresh token | OAuth app **Refresh Token Lifespan** in ServiceNow | 8,640,000 s (100 days) | An upper bound: if it expires first, the next refresh fails and the user signs in again. Set it at or above the sign-in lifetime. |
+
+The broker's `fallback_access_token_expiry_seconds=300` is used only if a
+ServiceNow token response ever omits `expires_in`.
+
 ## Claude pilot on macOS with an HTTPS tunnel
 
 Use a test instance and confirm your organization permits ServiceNow data to pass

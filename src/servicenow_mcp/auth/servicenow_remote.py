@@ -117,8 +117,11 @@ def create_auth(settings: RemoteSettings, storage, http_client=None):
         forward_resource=False,
         valid_scopes=[],
         require_authorization_consent=True,
+        # ServiceNow returns expires_in, so its Access Token Lifespan applies;
+        # this is used only if a response ever omits it.
         fallback_access_token_expiry_seconds=300,
-        fallback_refresh_token_expiry_seconds=86400,
+        # ServiceNow omits refresh_expires_in, so this sets the sign-in length.
+        fallback_refresh_token_expiry_seconds=settings.session_lifetime_seconds,
         token_expiry_threshold_seconds=30,
         enable_cimd=True,
     )

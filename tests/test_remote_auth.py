@@ -20,8 +20,8 @@ USER_A = "a" * 32
 USER_B = "b" * 32
 CALLBACK = "http://127.0.0.1:8766/callback"
 REMOTE_TOOLS = {
-    "list_records", "get_record", "list_incidents", "list_incidents_v2", "get_incident",
-    "get_incident_v2", "get_incident_v3", "list_knowledge_articles", "get_change_status",
+    "list_records", "get_record", "list_incidents", "get_incident",
+    "list_knowledge_articles", "get_change_status",
 }
 
 
@@ -332,6 +332,8 @@ def test_remote_exposes_only_read_tools(remote):
     names = {tool["name"] for tool in tools}
     assert names == REMOTE_TOOLS
     assert not {name for name in names if name.startswith(("create_", "update_", "confirm_"))}
+    versions = {tool["name"]: tool["_meta"]["fastmcp"]["version"] for tool in tools}
+    assert versions["list_incidents"] == "2.0.0" and versions["get_incident"] == "3.0.0"
 
 
 @pytest.mark.parametrize("name,arguments,table,text", [

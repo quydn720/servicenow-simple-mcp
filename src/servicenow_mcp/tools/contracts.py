@@ -495,7 +495,6 @@ for entity, record, table in (
     ("story", StoryRecord, Literal["rm_story"]),
     ("epic", EpicRecord, Literal["rm_epic"]),
     ("product", ProductRecord, Literal["cmdb_model"]),
-    ("incident", CommonRecord, Literal["incident"]),
     ("knowledge", KnowledgeRecord, Literal["kb_knowledge"]),
     ("change_status", ChangeStatusRecord, Literal["change_request"]),
 ):
@@ -526,13 +525,7 @@ READ_RESULTS["incident", "search"] = create_model(
         ),
     ),
 )
-READ_RESULTS["incident", "detail"] = create_model(
-    "IncidentDetailResult",
-    __base__=ContractModel,
-    table=(Literal["incident"], Field(description="Source ServiceNow table.")),
-    record=(IncidentRecord, Field(description="Approved incident fields; sys_id is omitted.")),
-)
-READ_RESULTS["incident", "detail_v3"] = IncidentDetailV3Result
+READ_RESULTS["incident", "detail"] = IncidentDetailV3Result
 
 PREPARE_RESULTS = {}
 for key, preview in PREVIEW_TYPES.items():
@@ -654,8 +647,12 @@ class ContractFunctionTool(FunctionTool):
         return super().convert_result(value)
 
 
-def contract_tool(mcp, output, *, input_schema_extra=None, **metadata):
-    """Publish schemas and validate direct and MCP invocations and results."""
+def contract_tool(mcp, output, *, version="1.0.0", input_schema_extra=None, **metadata):
+    """Publish schemas and validate direct and MCP invocations and results.
+
+    version is the tool's contract version. Tool names never carry versions;
+    FastMCP publishes it to clients as _meta.fastmcp.version.
+    """
     adapter = TypeAdapter(output | WriteError)
     schema = {"$schema": DIALECT, "type": "object", **adapter.json_schema()}
 
@@ -735,7 +732,7 @@ def contract_tool(mcp, output, *, input_schema_extra=None, **metadata):
                     return result(error_envelope(error))
 
         tool = ContractFunctionTool.from_function(
-            wrapped, output_schema=schema, **metadata
+            wrapped, output_schema=schema, version=version, **metadata
         )
         tool.parameters["$schema"] = DIALECT
         for name, prop in tool.parameters["properties"].items():

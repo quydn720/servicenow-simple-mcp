@@ -1,6 +1,7 @@
 # MCP tool design standard
 
-Standard version: **1.0.0**. Published: **2026-10-06**.
+Standard version: **1.1.0**. Published: **2026-10-19**. 1.1.0 moves contract
+versions from tool names into tool metadata (see [section 5](#5-contract-versioning)).
 
 This standard defines the target contract for ServiceNow MCP tools in this
 repository. It is intended for tool authors and reviewers. **MUST** and
@@ -28,7 +29,8 @@ These are the approved verbs. A new verb requires a reviewed update to this
 standard. Names such as `run`, `execute`, and `do_action` MUST NOT hide a generic
 executor. A naming example does not authorize implementation of that capability.
 Domain qualifiers follow the verb, as in `get_agile_story`; do not introduce a
-service prefix. A breaking major version appends `_v2`, `_v3`, and so on.
+service prefix. Tool names MUST NOT carry version suffixes such as `_v2` or `_v3`;
+a tool keeps its name across contract versions (see [section 5](#5-contract-versioning)).
 
 Every tool MUST have a reviewed specification containing:
 
@@ -205,8 +207,10 @@ supplies this envelope and MCP error signaling; see [error handling](error-handl
 
 Each tool MUST have its own semantic contract version, initially `1.0.0`,
 independent of package version, standard version, and negotiated MCP version.
-The version belongs in the specification and release catalog; MCP does not
-define a standard per-tool `version` field. Do not add an invented protocol field.
+Declare it with `contract_tool(..., version="X.Y.Z")` in `tools/contracts.py`.
+FastMCP publishes it to clients as `_meta.fastmcp.version` in `tools/list`, using
+the MCP `_meta` field reserved for implementation metadata. The version belongs in
+metadata, the specification, and the release catalog, never in the tool name.
 
 Store immutable, self-contained input/output schema snapshots for each released
 contract version with the specification and changelog (for example,
@@ -222,12 +226,14 @@ Schemas generated from Python types still require review and snapshots.
 
 Adding output fields can break strict consumers; it is not automatically minor.
 Changing error meanings or permission prerequisites requires compatibility review.
-For a major change, expose a new name such as `get_record_v2` and preserve the
-old contract during the documented migration window. State replacement, migration
-steps, deprecation date, removal date, and affected clients. Security fixes may
-require accelerated removal with owner approval and explicit release notice.
-Never silently rewrite an old schema snapshot. This document neither renames
-tools nor creates their release snapshots.
+A server exposes exactly one contract per tool name: the current one. For a major
+change, keep the name, bump the major version, add the new snapshot folder, and
+publish a changelog entry and release notice. State the incompatible changes,
+migration steps, and affected clients. Clients that need the previous contract
+pin to the earlier server release (tag or deployment) during their migration;
+the previous contract remains documented in its snapshot folder and git history.
+Security fixes may require an accelerated release with owner approval and explicit
+notice. Never silently rewrite an old schema snapshot.
 
 ## 6. Reusable tool specification template
 
@@ -542,9 +548,10 @@ MUST NOT be described as fully compliant merely because this standard exists.
   capability until those controls are implemented and reviewed.
 - All 20 tools now publish explicit field-level input/output schemas and validate
   arguments/results through `tools/contracts.py`. See [implemented contracts](tool-contracts.md).
-  The five new service-desk tools have initial 1.0.0 specifications and schema
-  snapshots; per-tool versions and snapshots for the older tools remain to be
-  introduced. See [service-desk specifications](service-desk-tools.md).
+  Every tool publishes a contract version in `_meta.fastmcp.version`; tools
+  without an explicit version are baselined at 1.0.0. Service-desk tools have
+  specifications and schema snapshots; snapshots for the older common and Agile
+  tools remain to be introduced. See [service-desk specifications](service-desk-tools.md).
 - IDs, field allowlists, limits, priority choices, and text bounds are validated.
   Instance-specific lengths/choices, identity checks, and permission specifications
   still require review and live-instance verification.

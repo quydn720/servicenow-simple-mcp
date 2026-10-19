@@ -1,6 +1,7 @@
 """Validate published contracts and their enforcement over the MCP boundary."""
 
 import asyncio
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -18,7 +19,7 @@ from servicenow_mcp.tools.contracts import (
 ID = "a" * 32
 
 
-def test_incident_v3_redaction_metadata_matches_projected_record():
+def test_incident_detail_redaction_metadata_matches_projected_record():
     record = {"number": "INC0001", "url": "https://example.test/incident_list.do"}
     omitted_fields = [field for field in INCIDENT_DETAIL_FIELDS if field not in record]
     result = IncidentDetailV3Result.model_validate(
@@ -94,8 +95,11 @@ def test_all_discovered_contracts_are_explicit_and_self_contained(server):
     async def run():
         async with Client(mcp, mode="legacy") as connection:
             tools = await connection.list_tools()
-            assert len(tools) == 23
+            assert len(tools) == 20
             for tool in tools:
+                # Versions live in metadata, never in tool names.
+                assert not re.search(r"_v\d+$", tool.name)
+                assert re.fullmatch(r"\d+\.\d+\.\d+", tool.meta["fastmcp"]["version"])
                 assert tool.input_schema["$schema"] == DIALECT
                 assert tool.input_schema["additionalProperties"] is False
                 for prop in tool.input_schema["properties"].values():
@@ -125,13 +129,13 @@ def test_all_discovered_contracts_are_explicit_and_self_contained(server):
     factory.assert_not_called()
 
 
-def test_incident_v3_schema_requires_exactly_one_non_null_identifier(server):
+def test_incident_detail_schema_requires_exactly_one_non_null_identifier(server):
     mcp, factory, _ = server
 
     async def run():
         async with Client(mcp, mode="legacy") as connection:
             tool = next(
-                item for item in await connection.list_tools() if item.name == "get_incident_v3"
+                item for item in await connection.list_tools() if item.name == "get_incident"
             )
             validator = Draft202012Validator(tool.input_schema)
             assert validator.is_valid({"sys_id": ID})

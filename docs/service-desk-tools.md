@@ -3,8 +3,7 @@
 The local `service_desk` feature supplies these workflows. Supported deployment
 modes: local stdio provides every tool below. The remote OAuth server
 (`servicenow_mcp.servers.remote`) also provides the read-only `list_incidents`,
-`list_incidents_v2`, `get_incident`, `get_incident_v2`, `get_incident_v3`,
-`list_knowledge_articles`, and `get_change_status`, executed with the connected user's ServiceNow token. Write
+`get_incident`, `list_knowledge_articles`, and `get_change_status`, executed with the connected user's ServiceNow token. Write
 preparation tools stay local-only, because previews are session-bound and the
 remote server uses stateless HTTP. Discovery does not need credentials. Responsible ownership is the service-desk tool
 maintainers; the deploying platform owner must record verified instance roles,
@@ -16,8 +15,10 @@ start at **1.0.0**, independent of package and MCP versions. Each new tool has
 initial input/output snapshots linked below. Initial
 changelog: introduce the specified bounded workflow. Compatible additions receive
 a minor version; corrections receive a patch version; breaking changes require a
-major version and a new tool name with the corresponding suffix (`_v2`, `_v3`, etc.), retaining a migration period under
-the [design standard](mcp-tool-design-standard.md#5-contract-versioning).
+major version under the [design standard](mcp-tool-design-standard.md#5-contract-versioning).
+Tool names never change. Each tool publishes its current contract version as
+`_meta.fastmcp.version` in `tools/list`, and each section below lists the version
+history with links to every snapshot.
 The existing `create_incident` contract is reused without changing its arguments
 or successful result shapes; historical versioning for existing tools remains
 pending.
@@ -54,9 +55,9 @@ unavailable fields may be omitted. Outputs discard undeclared upstream fields,
 check retrieved IDs against the requested ID, and validate types and bounds before
 returning. Search count is the returned length, not the total; ordering is
 unspecified and there is no pagination or truncation indicator. An empty search is
-successful. The incident v2/v3 contracts below differ: they omit `sys_id`, return
+successful. The current incident contracts below differ: they omit `sys_id`, return
 `state` and `priority` as display labels, accept an exact incident number, and
-`list_incidents_v2` is ordered and paginated.
+`list_incidents` is ordered and paginated.
 
 All tools publish the standard structured error variant with MCP `isError: true`.
 Applicable read/preparation errors:
@@ -80,44 +81,7 @@ Write errors always have `retryable=false`; a dispatched write can have an unkno
 outcome. See [error handling](error-handling.md) and [write review](write-review.md)
 for exact error schemas, confirmation behavior, and reconciliation guidance.
 
-## `list_incidents` — 1.0.0
-
-Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
-Inputs: optional `search_text` and exact `number` (`INC` plus 1–20 digits), with
-at least one non-null value required; optional `limit`. When both are present they
-are combined with AND. Search text matches only `short_description` using LIKE.
-No arbitrary filters, record writes, or approval are supported.
-
-Returned fields: sys_id, number, short_description, description, state, priority,
-assignment_group, assigned_to, caller_id, active, sys_created_on, sys_updated_on.
-The same fieldset is used by incident details and confirmed incident writes.
-
-Schemas: [input](tool-contracts/list_incidents/1.0.0/input.schema.json),
-[output](tool-contracts/list_incidents/1.0.0/output.schema.json).
-
-Example arguments: `{"search_text":"VPN","number":"INC0001","limit":10}`.
-Example result: `{"table":"incident","count":1,"records":[{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"INC0001","short_description":"VPN unavailable"}]}`.
-
-## `get_incident` — 1.0.0
-
-Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
-Required input `sys_id`; returns at most one record with the incident fieldset
-above. No field-selection argument, attachments, journal/activity history, bulk
-read, pagination, or write behavior. The existing `get_incident` prompt is retained
-as a separate MCP prompt; this adds an actual tool.
-
-Schemas: [input](tool-contracts/get_incident/1.0.0/input.schema.json),
-[output](tool-contracts/get_incident/1.0.0/output.schema.json).
-
-Example arguments: `{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`.
-Example result: `{"table":"incident","sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","record":{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"INC0001","state":"2"}}`.
-
-Version 2.0.0 contracts were breaking changes, so they use new tool names under
-the [design standard](mcp-tool-design-standard.md#5-contract-versioning). The
-1.0.0 `list_incidents` and `get_incident` tools remain registered unchanged. Clients
-opt in by calling `list_incidents_v2` or `get_incident_v2`.
-
-## `list_incidents_v2` — 2.0.0
+## `list_incidents` — 2.0.0
 
 Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
 Inputs: at least one of `search_text`, exact `number` (`INC` plus 1–20 digits),
@@ -142,28 +106,20 @@ a raw UTC timestamp. Search activity is audit logged with the MCP client identit
 available, filter names, outcome, and result count; values and record identifiers
 are not logged.
 
-Schemas: [input](tool-contracts/list_incidents_v2/2.0.0/input.schema.json),
-[output](tool-contracts/list_incidents_v2/2.0.0/output.schema.json).
+Schemas: [input](tool-contracts/list_incidents/2.0.0/input.schema.json),
+[output](tool-contracts/list_incidents/2.0.0/output.schema.json).
 
 Example arguments: `{"search_text":"VPN","state":"In Progress","limit":1}`.
 Example result: `{"table":"incident","count":1,"records":[{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","short_description":"VPN unavailable","state":"In Progress","priority":"Low - 4"}],"next_offset":1}`.
 
-## `get_incident_v2` — 2.0.0
+Version history:
 
-Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
-Requires exactly one of `sys_id` or exact incident `number`. Returns one approved
-incident record with a number-filtered `url`; neither the response nor URL exposes
-sys_id. `state` and `priority` use display labels, references use display names,
-and timestamps stay raw UTC. Attachments and journal/activity history are excluded. No field-selection
-argument, bulk read, pagination, or write behavior.
+| Version | Changes | Snapshots |
+| --- | --- | --- |
+| 2.0.0 (current) | **Breaking.** Adds state, assignment group, caller, and update-date filters, stable ordering, `offset`/`next_offset` paging, and number-filtered URLs. Returns a narrower fieldset without `sys_id`; `state` and `priority` are display labels. | [2.0.0](tool-contracts/list_incidents/2.0.0/) |
+| 1.0.0 | `search_text` and/or `number`; returns the common incident fieldset with raw `sys_id` and choice codes; no pagination. | [1.0.0](tool-contracts/list_incidents/1.0.0/) |
 
-Schemas: [input](tool-contracts/get_incident_v2/2.0.0/input.schema.json),
-[output](tool-contracts/get_incident_v2/2.0.0/output.schema.json).
-
-Example arguments: `{"number":"INC0001"}`.
-Example result: `{"table":"incident","record":{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","state":"In Progress","priority":"Low - 4"}}`.
-
-## `get_incident_v3` — 3.0.0
+## `get_incident` — 3.0.0
 
 Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
 Requires exactly one non-null `sys_id` or exact incident `number`. Uses the
@@ -188,18 +144,30 @@ the standard safe `NOT_FOUND`; malformed or ambiguous results return
 whether an inaccessible record exists. A value-free audit event records tool,
 version, operation, outcome, and safe error code; the ServiceNow identity is
 reported as unavailable because the current client does not expose a verified
-identity label. It is registered by the local `service_desk` feature and the
-remote server; the existing `get_incident` tool and prompt remain available unchanged.
+identity label. The separate `get_incident` MCP prompt is unchanged.
 
-Schemas: [input](tool-contracts/get_incident_v3/3.0.0/input.schema.json),
-[output](tool-contracts/get_incident_v3/3.0.0/output.schema.json).
+Schemas: [input](tool-contracts/get_incident/3.0.0/input.schema.json),
+[output](tool-contracts/get_incident/3.0.0/output.schema.json).
 
 Example arguments: `{"number":"INC0001"}`.
 Example result: `{"table":"incident","record":{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","state":"In Progress"},"redaction":{"excluded_categories":["journal_history","attachments","non_allowlisted_fields"],"omitted_fields":["short_description","description","priority","assignment_group","assigned_to","caller_id","active","sys_created_on","sys_updated_on"]}}`.
 
-Migration is opt-in: clients that need the new redaction metadata can call
-`get_incident_v3`; the existing `get_incident` 1.0.0 and `get_incident_v2` 2.0.0
-contracts and their schema snapshots are unchanged. This release does not deprecate or remove the existing tool.
+Version history:
+
+| Version | Changes | Snapshots |
+| --- | --- | --- |
+| 3.0.0 (current) | **Breaking.** Adds the required `redaction` object; exactly one non-null `sys_id` or `number` is enforced in the schema. | [3.0.0](tool-contracts/get_incident/3.0.0/) |
+| 2.0.0 | Lookup by `sys_id` or exact `number`; no `sys_id` in the response; number-filtered URL; `state` and `priority` display labels. Never served under this name; superseded before release. | [2.0.0](tool-contracts/get_incident/2.0.0/) |
+| 1.0.0 | Required `sys_id`; returns the common incident fieldset with raw `sys_id` and choice codes. | [1.0.0](tool-contracts/get_incident/1.0.0/) |
+
+### Migrating from 1.0.0
+
+Clients of the 1.0.0 `list_incidents` and `get_incident` contracts must stop
+relying on `sys_id` in results, on the wider fieldset in search results, and on
+raw `state`/`priority` codes. Look incidents up by `number` instead. The tool names are unchanged;
+check `_meta.fastmcp.version` in `tools/list` to confirm which contract a server
+offers. Clients that cannot migrate yet must pin to a release that predates this
+change.
 
 ## `list_knowledge_articles` — 1.0.0
 

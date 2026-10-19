@@ -181,8 +181,9 @@ stop the stdio MCP server. The dashboard is bound to localhost only.
 Returned records use display names for reference fields, such as
 `"assignment_group": "Service Desk"` and `"assigned_to": "Jane Doe"`.
 This applies to list, get, create, and update responses. The record's own
-`sys_id`, choice codes, and timestamps retain their raw values. The incident
-v2/v3 tools are the exception: they return `state` and `priority` as display labels. Queries and
+`sys_id`, choice codes, and timestamps retain their raw values. `list_incidents`
+and `get_incident` are the exception: they return `state` and `priority` as display
+labels and omit `sys_id`. Queries and
 write payloads still use reference sys_ids.
 
 ### Raw-query security change
@@ -200,7 +201,7 @@ security restriction; remaining contract migrations are separate work.
 
 ### Typed tool contracts
 
-All 23 local tools (and the nine shared remote read tools) publish explicit
+All 20 local tools (and the six shared remote read tools) publish explicit
 input/output schemas and validate arguments and results. See
 [implemented tool contracts](docs/tool-contracts.md) for field allowlists,
 limits, result variants, and compatibility changes. Existing names and response
@@ -232,7 +233,7 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | Group | Registered tools and prompts |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `list_incidents`, `list_incidents_v2`, `get_incident`, `get_incident_v2`, `get_incident_v3`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
+| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
 | `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 
@@ -240,10 +241,13 @@ Omitting the setting enables the first three groups and preserves existing
 tool names and existing story arguments. Whitespace and duplicate names are accepted. Unknown groups
 or an explicitly empty list stop startup. Groups control MCP discovery; they do
 not change ServiceNow ACLs. The incident prompt references `get_record`, so enable
-`common` alongside `service_desk` when using that prompt. Clients can opt into
-`list_incidents_v2` and `get_incident_v2` for number lookup, display labels, and
-pagination, or into `get_incident_v3` for explicit
-exclusion and omitted-field metadata.
+`common` alongside `service_desk` when using that prompt.
+
+Tool names never carry versions. Each tool publishes its contract version in
+`tools/list` as `_meta.fastmcp.version`; for example `list_incidents` is 2.0.0 and
+`get_incident` is 3.0.0. **Breaking change:** those two tools replaced their 1.0.0
+contracts under the same names. See the
+[service-desk version history and migration notes](docs/service-desk-tools.md#migrating-from-100).
 
 ## Architecture and adding tools
 

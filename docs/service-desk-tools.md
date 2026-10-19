@@ -46,7 +46,13 @@ selection and confirmation IDs do not grant authority. There is no universal rol
 assertion: actual roles, scopes, and record restrictions remain instance review
 requirements. Complete audit coverage across every tool remains a
 [compliance gap](mcp-tool-design-standard.md#current-compliance-gaps); incident
-search emits the safe audit event described below.
+search and detail emit the safe audit events described below.
+
+Audit events identify who acted without any request values. On the remote
+server, `identity` is the sys_id of the ServiceNow user whose token the broker
+verified for that request (`identity_type: servicenow_user`). On local stdio it
+is `configured_integration_account`, because every call uses that account. The
+MCP client's ID is recorded separately as `client`.
 
 Read results use `{table, count, records}` for searches and
 `{table, sys_id, record}` for retrieval. Returned sys_ids stay raw; references are
@@ -105,8 +111,8 @@ Returned fields: number, its `url` filtered by incident number, short_descriptio
 state, priority, and sys_updated_on. The URL opens the ServiceNow incident list
 filtered to that ticket; it contains no sys_id. `state` and `priority` use their
 ServiceNow display labels, references use display names, and `sys_updated_on` stays
-a raw UTC timestamp. Search activity is audit logged with the MCP client identity when
-available, filter names, outcome, and result count; values and record identifiers
+a raw UTC timestamp. Search activity is audit logged with the acting identity (see
+above), filter names, outcome, and result count; values and record identifiers
 are not logged.
 
 Schemas: [input](tool-contracts/list_incidents/2.0.0/input.schema.json),
@@ -145,9 +151,7 @@ Number lookup is bounded to two results to detect ambiguity. No match returns
 the standard safe `NOT_FOUND`; malformed or ambiguous results return
 `UPSTREAM_ERROR`. Access-denied and missing-record messages do not disclose
 whether an inaccessible record exists. A value-free audit event records tool,
-version, operation, outcome, and safe error code; the ServiceNow identity is
-reported as unavailable because the current client does not expose a verified
-identity label. The separate `get_incident` MCP prompt is unchanged.
+version, operation, the acting identity (see above), outcome, and safe error code. The separate `get_incident` MCP prompt is unchanged.
 
 Schemas: [input](tool-contracts/get_incident/3.0.0/input.schema.json),
 [output](tool-contracts/get_incident/3.0.0/output.schema.json).

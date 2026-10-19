@@ -198,7 +198,7 @@ security restriction; remaining contract migrations are separate work.
 
 ### Typed tool contracts
 
-All 20 local tools (and the two shared remote read tools) publish explicit
+All 21 local tools (and the two shared remote read tools) publish explicit
 input/output schemas and validate arguments and results. See
 [implemented tool contracts](docs/tool-contracts.md) for field allowlists,
 limits, result variants, and compatibility changes. Existing names and response
@@ -230,15 +230,16 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | Group | Registered tools and prompts |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
+| `service_desk` | `list_incidents`, `get_incident`, `get_incident_v3`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
 | `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 
 Omitting the setting enables the first three groups and preserves existing
 tool names and existing story arguments. Whitespace and duplicate names are accepted. Unknown groups
 or an explicitly empty list stop startup. Groups control MCP discovery; they do
-not change ServiceNow ACLs. The incident prompt references `get_record`, so enable
-`common` alongside `service_desk` when using that prompt.
+not change ServiceNow ACLs. The existing incident prompt calls `get_incident`
+and remains unchanged. Clients can opt into `get_incident_v3` for explicit
+exclusion and omitted-field metadata.
 
 ## Architecture and adding tools
 

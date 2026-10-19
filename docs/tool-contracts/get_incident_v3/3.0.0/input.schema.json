@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "sys_id": {
+      "anyOf": [
+        {
+          "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+          "pattern": "^[0-9a-fA-F]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Raw 32-character hexadecimal ServiceNow sys_id; never a display name."
+    },
+    "number": {
+      "anyOf": [
+        {
+          "description": "Exact incident number, uppercase INC followed by 1\u201320 digits.",
+          "pattern": "^INC[0-9]{1,20}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Exact incident number, uppercase INC followed by 1\u201320 digits."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "sys_id"
+      ],
+      "properties": {
+        "sys_id": {
+          "not": {
+            "type": "null"
+          }
+        },
+        "number": {
+          "type": "null"
+        }
+      }
+    },
+    {
+      "required": [
+        "number"
+      ],
+      "properties": {
+        "sys_id": {
+          "type": "null"
+        },
+        "number": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

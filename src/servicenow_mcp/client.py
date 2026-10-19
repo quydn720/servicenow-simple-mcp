@@ -116,10 +116,12 @@ class ServiceNowClient:
 
     @staticmethod
     def _display_record(record: Dict[str, Any]) -> Dict[str, Any]:
-        """Flatten Table API field wrappers, using display names for references."""
+        """Flatten Table API wrappers, preferring user-facing display values."""
         return {
             field: (
-                value.get("display_value", "") if "link" in value else value["value"]
+                value.get("display_value")
+                if value.get("display_value") is not None
+                else value["value"]
             )
             if isinstance(value, dict) and "value" in value
             else value
@@ -132,15 +134,23 @@ class ServiceNowClient:
         query: Optional[str] = None,
         fields: Optional[List[str]] = None,
         limit: int = 10,
+        offset: int = 0,
+        order_by: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {
             "sysparm_limit": min(max(limit, 1), 100),
         }
+        if offset:
+            params["sysparm_offset"] = max(offset, 0)
 
         if query:
             params["sysparm_query"] = query
         if fields:
             params["sysparm_fields"] = ",".join(fields)
+        if order_by:
+            params["sysparm_query"] = "^".join(
+                [part for part in (query, *order_by) if part]
+            )
 
         result = self._request("GET", f"/table/{table}", params=params)
         return result.get("result", [])

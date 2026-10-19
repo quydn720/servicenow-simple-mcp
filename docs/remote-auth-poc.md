@@ -151,6 +151,99 @@ The POC uses stateless HTTP with JSON responses for these request/response tools
 It has no GET notification stream and no legacy `/sse` endpoint. OAuth grant
 state is persistent even though MCP transport sessions are stateless.
 
+## Claude pilot on macOS with an HTTPS tunnel
+
+Use a test instance and confirm your organization permits ServiceNow data to pass
+through Claude and the tunnel provider. Claude connects from Anthropic's cloud,
+even when using Claude Desktop, so a localhost URL or a Mac-only VPN route is not
+enough. Your Mac must be able to reach ServiceNow; the browser must also reach
+ServiceNow and its SSO provider. Keep the Mac awake and connected during the pilot.
+
+Install ngrok and authenticate the agent locally using its dashboard instructions.
+Never paste its account token into chat or commit it. Use the stable dev domain
+assigned to your ngrok account, replacing `your-assigned-domain.ngrok-free.app`
+below with the actual hostname. No Caddy instance or owned domain is required.
+
+Keep these three URLs distinct:
+
+| Setting | Value |
+| --- | --- |
+| `POC_PUBLIC_URL` | `https://your-assigned-domain.ngrok-free.app` |
+| ServiceNow OAuth application redirect | `https://your-assigned-domain.ngrok-free.app/auth/callback` |
+| `POC_ALLOWED_REDIRECT_URIS` | `https://claude.ai/api/mcp/auth_callback` |
+
+Use the confidential ServiceNow client and authenticated identity resource from
+the setup above. Keep `POC_FORWARD_PKCE=false` unless upstream compatibility is
+verified. Give `POC_STORAGE_DIR` an absolute path to a directory with mode 700;
+keep the independent signing/encryption keys and mode-600 environment file stable
+across restarts. Do not overwrite an existing configuration or use the local
+stdio server's user tokens as remote credentials.
+
+From the repository root, install the locked environment and check the remote
+authentication slice before exposing it:
+
+```bash
+uv sync --locked --all-extras --group dev
+uv run --locked pytest -q tests/test_remote_auth.py tests/test_environment.py
+uv run --locked python -m servicenow_mcp.servers.remote
+```
+
+In a separate terminal, forward the whole origin, not just `/mcp`:
+
+```bash
+ngrok http http://127.0.0.1:8000 --url https://your-assigned-domain.ngrok-free.app --inspect=false
+```
+
+Preserve the public Host header and Authorization header. Do not add ngrok Basic
+Auth or another OAuth login in front of the broker. `--inspect=false` disables
+local HTTP inspection; review provider-side traffic capture and retention too.
+Keep OAuth query strings, codes, tokens, headers, and response bodies out of logs.
+
+Check the public endpoint without extra bypass headers:
+
+```bash
+PUBLIC_URL=https://your-assigned-domain.ngrok-free.app
+curl --fail --silent --show-error "$PUBLIC_URL/.well-known/oauth-protected-resource/mcp"
+curl --fail --silent --show-error "$PUBLIC_URL/.well-known/oauth-authorization-server"
+curl --include --silent --show-error "$PUBLIC_URL/mcp" \
+   -H 'Content-Type: application/json' \
+   -H 'Accept: application/json, text/event-stream' \
+   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"pilot-preflight","version":"1.0"}}}'
+```
+
+Discovery must return JSON, with `resource` exactly equal to the public `/mcp`
+URL and public HTTPS issuer/endpoint URLs. The authorization metadata must
+advertise S256 PKCE and dynamic registration. The unauthenticated MCP POST must
+return `401` with a `WWW-Authenticate` resource-metadata pointer. An HTML warning,
+localhost redirect, or host-validation error is not a successful preflight.
+Claude allows 10 seconds for discovery, registration, and token exchange, and
+30 seconds for refresh requests.
+
+The ngrok free tier can show an initial warning for HTML browser traffic. Visit
+the public origin and acknowledge the warning before beginning a fresh sign-in;
+API traffic should not need a custom bypass header. If the warning blocks the
+OAuth flow, use a tunnel tier without the interstitial rather than disabling
+broker authentication.
+
+In Claude, open **Customize > Connectors > Add custom connector**. For a managed
+organization, an authorized administrator first adds the connector under
+**Organization settings > Connectors**. Enter the exact public URL with `/mcp`
+and no trailing slash. Choose OAuth sign-in and **Register automatically** for
+the OAuth client. Leave fixed request credentials unset: the ServiceNow client
+ID and secret belong only in the broker configuration, not in Claude.
+
+Complete broker consent and ServiceNow sign-in, then enable the connector for a
+conversation. Only `list_records` and `get_record` should be available. Complete
+the two-user ACL, refresh, revocation, and restart checks below before accepting
+the pilot; passing mock tests is not proof of live Claude or ServiceNow access.
+
+When finished, disconnect the connector and stop the tunnel and server. Revoke
+upstream grants explicitly when required; disconnecting Claude alone does not
+prove ServiceNow grant revocation. If the public hostname changes, update both
+`POC_PUBLIC_URL` and the ServiceNow callback, restart the broker, and re-add and
+reauthorize the Claude connector. This single-worker tunnel setup is a pilot,
+not a production deployment.
+
 ## Connect a client
 
 Choose a client supporting Streamable HTTP, OAuth authorization code with PKCE,

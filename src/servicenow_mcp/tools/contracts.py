@@ -15,6 +15,7 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
     create_model,
+    model_validator,
 )
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
@@ -73,6 +74,24 @@ Limit = Annotated[
         description="Maximum returned records, from 1 to 100; default 10. No pagination.",
     ),
 ]
+PageLimit = Annotated[
+    int,
+    Field(
+        strict=True,
+        ge=1,
+        le=100,
+        description="Maximum returned records per page, from 1 to 100; default 10.",
+    ),
+]
+Offset = Annotated[
+    int,
+    Field(
+        strict=True,
+        ge=0,
+        le=100000,
+        description="Zero-based result offset, from 0 to 100000.",
+    ),
+]
 RawQuery = Annotated[
     str | None,
     Field(
@@ -113,6 +132,19 @@ COMMON_FIELDS = (
     "active",
     "sys_created_on",
     "sys_updated_on",
+)
+INCIDENT_SEARCH_FIELDS = (
+    "number",
+    "short_description",
+    "state",
+    "priority",
+    "sys_updated_on",
+)
+INCIDENT_DETAIL_FIELDS = tuple(field for field in COMMON_FIELDS if field != "sys_id")
+INCIDENT_DETAIL_EXCLUDED_CATEGORIES = (
+    "journal_history",
+    "attachments",
+    "non_allowlisted_fields",
 )
 STORY_FIELDS = (
     "sys_id",
@@ -204,7 +236,7 @@ class ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-def record_type(name, fields):
+def record_type(name, fields, *, display_choices=False):
     # ServiceNow Table API emits raw choice/number/boolean fields as strings.
     declarations = {}
     references = {
@@ -215,12 +247,20 @@ def record_type(name, fields):
         "epic",
         "kb_knowledge_base",
     }
+    # Only contracts that document display labels for choices opt in.
+    choice_fields = (
+        {"state", "priority", "approval", "type", "workflow_state"}
+        if display_choices
+        else set()
+    )
     for field in fields:
         if field == "sys_id":
             declarations[field] = (SysId, Field(description="Raw record identifier."))
         else:
             description = (
-                "Reference display name."
+                "ServiceNow display label."
+                if field in choice_fields
+                else "Reference display name."
                 if field in references
                 else "ServiceNow field value as a string."
             )
@@ -235,6 +275,75 @@ def record_type(name, fields):
 
 
 CommonRecord = record_type("CommonRecord", COMMON_FIELDS)
+IncidentRecord = create_model(
+    "IncidentRecord",
+    __base__=record_type("IncidentRecordBase", INCIDENT_DETAIL_FIELDS, display_choices=True),
+    number=(str, Field(description="Incident number used for follow-up.")),
+    url=(str, Field(description="ServiceNow incident URL filtered by incident number.")),
+)
+
+
+class IncidentRedactionMetadata(ContractModel):
+    excluded_categories: list[
+        Literal["journal_history", "attachments", "non_allowlisted_fields"]
+    ] = Field(
+        min_length=3,
+        max_length=3,
+        description="Content categories excluded by policy, whether or not present upstream.",
+        json_schema_extra={"const": list(INCIDENT_DETAIL_EXCLUDED_CATEGORIES)},
+    )
+    omitted_fields: list[
+        Literal[
+            "number",
+            "short_description",
+            "description",
+            "state",
+            "priority",
+            "assignment_group",
+            "assigned_to",
+            "caller_id",
+            "active",
+            "sys_created_on",
+            "sys_updated_on",
+        ]
+    ] = Field(
+        max_length=len(INCIDENT_DETAIL_FIELDS),
+        description="Allowlisted fields absent from the returned record; absence reason is unknown.",
+        json_schema_extra={"uniqueItems": True},
+    )
+
+    @model_validator(mode="after")
+    def validate_excluded_categories(self):
+        if self.excluded_categories != list(INCIDENT_DETAIL_EXCLUDED_CATEGORIES):
+            raise ValueError("Excluded categories must match the fixed release policy.")
+        return self
+
+
+class IncidentDetailV3Result(ContractModel):
+    table: Literal["incident"] = Field(description="Source ServiceNow table.")
+    record: IncidentRecord = Field(description="Approved incident fields; sys_id is omitted.")
+    redaction: IncidentRedactionMetadata = Field(
+        description="Fixed policy exclusions and approved fields absent from the record."
+    )
+
+    @model_validator(mode="after")
+    def validate_omitted_fields(self):
+        expected = [
+            field
+            for field in INCIDENT_DETAIL_FIELDS
+            if field not in self.record.model_fields_set
+        ]
+        if self.redaction.omitted_fields != expected:
+            raise ValueError("Omitted fields must exactly match absent record fields.")
+        return self
+
+
+IncidentSearchRecord = create_model(
+    "IncidentSearchRecord",
+    __base__=record_type("IncidentSearchRecordBase", INCIDENT_SEARCH_FIELDS, display_choices=True),
+    number=(str, Field(description="Incident number used for follow-up.")),
+    url=(str, Field(description="ServiceNow incident URL filtered by incident number.")),
+)
 StoryRecord = record_type("StoryRecord", STORY_FIELDS)
 EpicRecord = record_type("EpicRecord", EPIC_FIELDS)
 ProductRecord = record_type("ProductRecord", PRODUCT_FIELDS)
@@ -394,6 +503,34 @@ for entity, record, table in (
     READ_RESULTS[entity, "list"] = result_type(
         f"{entity.title()}ListResult", record, table, collection=True
     )
+
+READ_RESULTS["incident", "search"] = create_model(
+    "IncidentSearchResult",
+    __base__=ContractModel,
+    table=(Literal["incident"], Field(description="Source ServiceNow table.")),
+    count=(
+        Annotated[int, Field(ge=0, le=100)],
+        Field(description="Number of returned records; equals records length."),
+    ),
+    records=(
+        Annotated[list[IncidentSearchRecord], Field(max_length=100)],
+        Field(description="Approved incident summary fields; sys_id is omitted."),
+    ),
+    next_offset=(
+        Offset | None,
+        Field(
+            default=None,
+            description="Next page offset when the page is full; otherwise omitted.",
+        ),
+    ),
+)
+READ_RESULTS["incident", "detail"] = create_model(
+    "IncidentDetailResult",
+    __base__=ContractModel,
+    table=(Literal["incident"], Field(description="Source ServiceNow table.")),
+    record=(IncidentRecord, Field(description="Approved incident fields; sys_id is omitted.")),
+)
+READ_RESULTS["incident", "detail_v3"] = IncidentDetailV3Result
 
 PREPARE_RESULTS = {}
 for key, preview in PREVIEW_TYPES.items():

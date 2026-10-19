@@ -1,7 +1,7 @@
 # Implemented MCP tool contracts
 
 The authoritative definitions are in `src/servicenow_mcp/tools/contracts.py`.
-All 20 tools publish JSON Schema 2020-12 inputs and explicit outputs in discovery.
+All 21 tools publish JSON Schema 2020-12 inputs and explicit outputs in discovery.
 Registration through `contract_tool` validates direct and MCP calls and validates
 structured results. Discovery needs no credentials or ServiceNow requests.
 These contracts also apply to the remote `get_record` and `list_records` tools.
@@ -55,6 +55,7 @@ story_points, active, and timestamps. Reference fields are display names.
 | Operation | Structured result |
 | --- | --- |
 | Get | `{table, sys_id, record}` with typed record fields |
+| Incident detail v3 | `{table, record, redaction}` with the approved incident fields and required exclusion/omission metadata |
 | List | `{table, count, records}`; count equals returned length, length cannot exceed requested limit |
 | Create/update preparation | `{status: "awaiting_confirmation", preview_id, preview, expires_in_seconds: 600, message}` or standard error |
 | Confirmation success | `{table, record}` with table-specific record fields |

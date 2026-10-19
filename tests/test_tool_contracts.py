@@ -9,9 +9,61 @@ from fastmcp import Client
 from jsonschema import Draft202012Validator
 
 from servicenow_mcp.servers.stdio import create_server
-from servicenow_mcp.tools.contracts import DIALECT
+from servicenow_mcp.tools.contracts import (
+    DIALECT,
+    IncidentDetailV3Result,
+    INCIDENT_DETAIL_FIELDS,
+)
 
 ID = "a" * 32
+
+
+def test_incident_v3_redaction_metadata_matches_projected_record():
+    record = {"number": "INC0001", "url": "https://example.test/incident_list.do"}
+    omitted_fields = [field for field in INCIDENT_DETAIL_FIELDS if field not in record]
+    result = IncidentDetailV3Result.model_validate(
+        {
+            "table": "incident",
+            "record": record,
+            "redaction": {
+                "excluded_categories": [
+                    "journal_history",
+                    "attachments",
+                    "non_allowlisted_fields",
+                ],
+                "omitted_fields": omitted_fields,
+            },
+        }
+    )
+    assert result.redaction.omitted_fields == omitted_fields
+    redaction_schema = IncidentDetailV3Result.model_json_schema()["properties"][
+        "redaction"
+    ]["$ref"]
+    schema_definition = IncidentDetailV3Result.model_json_schema()["$defs"][
+        redaction_schema.rsplit("/", maxsplit=1)[-1]
+    ]
+    assert schema_definition["properties"]["excluded_categories"]["const"] == [
+        "journal_history",
+        "attachments",
+        "non_allowlisted_fields",
+    ]
+    assert schema_definition["properties"]["omitted_fields"]["uniqueItems"] is True
+
+    with pytest.raises(ValueError):
+        IncidentDetailV3Result.model_validate(
+            {
+                "table": "incident",
+                "record": record,
+                "redaction": {
+                    "excluded_categories": [
+                        "journal_history",
+                        "attachments",
+                        "non_allowlisted_fields",
+                    ],
+                    "omitted_fields": [],
+                },
+            }
+        )
 
 
 @pytest.fixture
@@ -42,7 +94,7 @@ def test_all_discovered_contracts_are_explicit_and_self_contained(server):
     async def run():
         async with Client(mcp, mode="legacy") as connection:
             tools = await connection.list_tools()
-            assert len(tools) == 20
+            assert len(tools) == 21
             for tool in tools:
                 assert tool.input_schema["$schema"] == DIALECT
                 assert tool.input_schema["additionalProperties"] is False
@@ -68,6 +120,27 @@ def test_all_discovered_contracts_are_explicit_and_self_contained(server):
                                 check(value)
 
                     check(schema)
+
+    asyncio.run(run())
+    factory.assert_not_called()
+
+
+def test_incident_v3_schema_requires_exactly_one_non_null_identifier(server):
+    mcp, factory, _ = server
+
+    async def run():
+        async with Client(mcp, mode="legacy") as connection:
+            tool = next(
+                item for item in await connection.list_tools() if item.name == "get_incident_v3"
+            )
+            validator = Draft202012Validator(tool.input_schema)
+            assert validator.is_valid({"sys_id": ID})
+            assert validator.is_valid({"number": "INC0001"})
+            assert validator.is_valid({"sys_id": ID, "number": None})
+            assert validator.is_valid({"sys_id": None, "number": "INC0001"})
+            assert not validator.is_valid({})
+            assert not validator.is_valid({"sys_id": None, "number": None})
+            assert not validator.is_valid({"sys_id": ID, "number": "INC0001"})
 
     asyncio.run(run())
     factory.assert_not_called()

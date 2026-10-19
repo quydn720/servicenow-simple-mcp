@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,7 +14,8 @@ from jsonschema import Draft202012Validator
 from servicenow_mcp.errors import OperationError
 from servicenow_mcp.servers.stdio import create_server
 from servicenow_mcp.tools.contracts import (
-    COMMON_FIELDS,
+    INCIDENT_SEARCH_FIELDS,
+    INCIDENT_DETAIL_FIELDS,
     KNOWLEDGE_FIELDS,
     CHANGE_STATUS_FIELDS,
 )
@@ -22,6 +24,7 @@ ID = "a" * 32
 NEW_TOOLS = {
     "list_incidents",
     "get_incident",
+    "get_incident_v3",
     "list_knowledge_articles",
     "update_incident_journal",
     "get_change_status",
@@ -37,11 +40,18 @@ def setup(monkeypatch):
         Mock(side_effect=AssertionError("Live calls forbidden")),
     )
     upstream = Mock()
+    upstream.instance_url = "https://example.test"
     upstream.list_records.return_value = [
-        {"sys_id": ID, "short_description": "VPN", "private": "secret"}
+        {
+            "sys_id": ID,
+            "number": "INC0001",
+            "short_description": "VPN",
+            "private": "secret",
+        }
     ]
     upstream.get_record.return_value = {
         "sys_id": ID,
+        "number": "INC0001",
         "state": "-1",
         "approval": "requested",
         "private": "secret",
@@ -69,12 +79,17 @@ def test_new_contracts_match_versioned_snapshots(setup):
         async with Client(server, mode="legacy") as connection:
             tools = {t.name: t for t in await connection.list_tools()}
             for name in NEW_TOOLS:
+                version = {
+                    "list_incidents": "2.0.0",
+                    "get_incident": "2.0.0",
+                    "get_incident_v3": "3.0.0",
+                }.get(name, "1.0.0")
                 folder = (
                     Path(__file__).resolve().parents[1]
                     / "docs"
                     / "tool-contracts"
                     / name
-                    / "1.0.0"
+                    / version
                 )
                 for kind, schema in (
                     ("input", tools[name].input_schema),
@@ -104,21 +119,21 @@ def test_new_contracts_match_versioned_snapshots(setup):
             {"search_text": " VPN "},
             "short_descriptionLIKEVPN",
             "incident",
-            COMMON_FIELDS,
+            INCIDENT_SEARCH_FIELDS,
         ),
         (
             "list_incidents",
             {"number": "INC0001"},
             "number=INC0001",
             "incident",
-            COMMON_FIELDS,
+            INCIDENT_SEARCH_FIELDS,
         ),
         (
             "list_incidents",
             {"search_text": "VPN", "number": "INC0001"},
             "number=INC0001^short_descriptionLIKEVPN",
             "incident",
-            COMMON_FIELDS,
+            INCIDENT_SEARCH_FIELDS,
         ),
         (
             "list_knowledge_articles",
@@ -150,9 +165,19 @@ def test_search_builds_only_validated_internal_queries(
             assert "private" not in str(result.structured_content)
 
     asyncio.run(run())
-    upstream.list_records.assert_called_once_with(
-        table, query=query, fields=list(fields), limit=10
-    )
+    if name == "list_incidents":
+        upstream.list_records.assert_called_once_with(
+            table,
+            query=query,
+            fields=list(fields),
+            limit=10,
+            offset=0,
+            order_by=["ORDERBYDESCsys_updated_on", "ORDERBYsys_id"],
+        )
+    else:
+        upstream.list_records.assert_called_once_with(
+            table, query=query, fields=list(fields), limit=10
+        )
     upstream.create_record.assert_not_called()
     upstream.update_record.assert_not_called()
 
@@ -167,6 +192,17 @@ def test_search_builds_only_validated_internal_queries(
         ("list_incidents", {"search_text": "VPN", "query": "active=true"}),
         ("list_incidents", {"search_text": "VPN", "limit": 101}),
         ("list_incidents", {"search_text": "VPN", "limit": True}),
+        ("list_incidents", {"state": "Open^ORactive=true"}),
+        ("list_incidents", {"caller_id": "bad"}),
+        ("list_incidents", {"updated_after": "2026-10-02T00:00:00+07:00"}),
+        (
+            "list_incidents",
+            {
+                "updated_after": "2026-10-02T00:00:00Z",
+                "updated_before": "2026-10-01T00:00:00Z",
+            },
+        ),
+        ("list_incidents", {"number": "INC0001", "offset": 100001}),
         ("list_knowledge_articles", {"search_text": "VPN", "knowledge_base": "bad"}),
         ("list_knowledge_articles", {"search_text": "VPN", "fields": ["text"]}),
         ("get_incident", {"sys_id": "bad"}),
@@ -216,7 +252,7 @@ def test_query_syntax_and_invalid_search_text_are_rejected(setup, name, text):
 
 @pytest.mark.parametrize(
     "name,fields",
-    [("get_incident", COMMON_FIELDS), ("get_change_status", CHANGE_STATUS_FIELDS)],
+    [("get_incident", ["sys_id", *INCIDENT_DETAIL_FIELDS]), ("get_change_status", CHANGE_STATUS_FIELDS)],
 )
 def test_details_and_status_are_narrow_read_only_results(setup, name, fields):
     server, _, upstream = setup
@@ -227,6 +263,8 @@ def test_details_and_status_are_narrow_read_only_results(setup, name, fields):
             assert not result.is_error
             data = result.structured_content
             assert data["record"]["state"] == "-1"
+            if name == "get_incident":
+                assert "sys_id" not in data and "sys_id" not in data["record"]
             assert "private" not in str(data)
             if name == "get_change_status":
                 assert data["record"]["approval"] == "requested"
@@ -237,7 +275,281 @@ def test_details_and_status_are_narrow_read_only_results(setup, name, fields):
     upstream.update_record.assert_not_called()
 
 
-@pytest.mark.parametrize("name", ["get_incident", "get_change_status"])
+def test_incident_filters_pagination_display_values_and_safe_audit(setup, caplog):
+    server, _, upstream = setup
+    caplog.set_level(logging.INFO, logger="servicenow_mcp.tools.service_desk.incidents")
+    upstream.list_records.return_value = [
+        {
+            "sys_id": ID,
+            "number": "INC0001",
+            "short_description": "VPN",
+            "state": "Open",
+            "priority": "Low - 4",
+            "sys_updated_on": "2026-10-06 07:00:00",
+        }
+    ]
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(
+                connection,
+                "list_incidents",
+                {
+                    "number": "INC0001",
+                    "search_text": "VPN",
+                    "state": "Open",
+                    "assignment_group": "b" * 32,
+                    "caller_id": "c" * 32,
+                    "updated_after": "2026-10-01T00:00:00Z",
+                    "updated_before": "2026-10-07T00:00:00Z",
+                    "limit": 1,
+                    "offset": 10,
+                },
+            )
+            data = result.structured_content
+            assert data["count"] == 1
+            assert data["next_offset"] == 11
+            assert data["records"] == [
+                {
+                    "number": "INC0001",
+                    "url": "https://example.test/incident_list.do?sysparm_query=number%3DINC0001",
+                    "short_description": "VPN",
+                    "state": "Open",
+                    "priority": "Low - 4",
+                    "sys_updated_on": "2026-10-06 07:00:00",
+                }
+            ]
+
+    asyncio.run(run())
+    upstream.list_records.assert_called_once_with(
+        "incident",
+        query="number=INC0001^short_descriptionLIKEVPN^state=Open^assignment_group="
+        + "b" * 32
+        + "^caller_id="
+        + "c" * 32
+        + "^sys_updated_on>=2026-10-01 00:00:00^sys_updated_on<2026-10-07 00:00:00",
+        fields=list(INCIDENT_SEARCH_FIELDS),
+        limit=1,
+        offset=10,
+        order_by=["ORDERBYDESCsys_updated_on", "ORDERBYsys_id"],
+    )
+    audit = [record.incident_search_audit for record in caplog.records if hasattr(record, "incident_search_audit")]
+    assert audit
+    assert audit[-1]["outcome"] == "success"
+    assert audit[-1]["result_count"] == 1
+    assert "VPN" not in str(audit[-1]) and ID not in str(audit[-1])
+
+
+def test_incident_detail_can_be_retrieved_by_number_without_sys_id(setup):
+    server, _, upstream = setup
+    upstream.list_records.return_value = [
+        {"sys_id": ID, "number": "INC0001", "state": "Open", "priority": "Low - 4"}
+    ]
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(connection, "get_incident", {"number": "INC0001"})
+            assert result.structured_content == {
+                "table": "incident",
+                "record": {
+                    "number": "INC0001",
+                    "url": "https://example.test/incident_list.do?sysparm_query=number%3DINC0001",
+                    "state": "Open",
+                    "priority": "Low - 4",
+                },
+            }
+
+    asyncio.run(run())
+    upstream.list_records.assert_called_once_with(
+        "incident", query="number=INC0001", fields=list(INCIDENT_DETAIL_FIELDS), limit=1
+    )
+
+
+def test_incident_v3_number_lookup_reports_exclusions_without_values(setup, caplog):
+    server, _, upstream = setup
+    upstream.list_records.return_value = [
+        {
+            "sys_id": ID,
+            "number": "INC0001",
+            "short_description": "VPN",
+            "private": "private-value",
+            "work_notes": "internal-note",
+            "comments": "customer-comment",
+            "attachment": "attachment-value",
+        }
+    ]
+    caplog.set_level(logging.INFO, logger="servicenow_mcp.tools.service_desk.incidents")
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(
+                connection, "get_incident_v3", {"number": "INC0001"}
+            )
+            assert not result.is_error
+            data = result.structured_content
+            assert data["record"] == {
+                "number": "INC0001",
+                "url": "https://example.test/incident_list.do?sysparm_query=number%3DINC0001",
+                "short_description": "VPN",
+            }
+            assert data["redaction"] == {
+                "excluded_categories": [
+                    "journal_history",
+                    "attachments",
+                    "non_allowlisted_fields",
+                ],
+                "omitted_fields": [
+                    field
+                    for field in INCIDENT_DETAIL_FIELDS
+                    if field not in {"number", "short_description"}
+                ],
+            }
+            assert not any(
+                secret in str(data)
+                for secret in (ID, "private-value", "internal-note", "customer-comment", "attachment-value")
+            )
+
+    asyncio.run(run())
+    upstream.list_records.assert_called_once_with(
+        "incident", query="number=INC0001", fields=list(INCIDENT_DETAIL_FIELDS), limit=2
+    )
+    audit = [record.incident_detail_audit for record in caplog.records if hasattr(record, "incident_detail_audit")]
+    assert audit[-1] == {
+        "event": "incident_detail_retrieval",
+        "tool": "get_incident_v3",
+        "tool_version": "3.0.0",
+        "operation": "read",
+        "identity": "unavailable",
+        "outcome": "success",
+    }
+    assert all(value not in str(audit[-1]) for value in (ID, "INC0001", "VPN"))
+
+
+def test_incident_v3_sys_id_lookup_uses_fixed_allowlist(setup):
+    server, _, upstream = setup
+    upstream.get_record.return_value = {
+        "sys_id": ID,
+        "number": "INC0001",
+        "state": "Open",
+        "work_notes": "internal-note",
+        "private": "private-value",
+    }
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(connection, "get_incident_v3", {"sys_id": ID})
+            assert result.structured_content["record"]["state"] == "Open"
+            assert "sys_id" not in str(result.structured_content)
+            assert "internal-note" not in str(result.structured_content)
+            assert "private-value" not in str(result.structured_content)
+
+    asyncio.run(run())
+    upstream.get_record.assert_called_once_with(
+        "incident", ID, fields=["sys_id", *INCIDENT_DETAIL_FIELDS]
+    )
+
+
+@pytest.mark.parametrize(
+    "records,code",
+    [
+        ([], "NOT_FOUND"),
+        (None, "UPSTREAM_ERROR"),
+        ([None], "UPSTREAM_ERROR"),
+        ([{"number": "INC0002"}], "UPSTREAM_ERROR"),
+        ([{"number": "INC0001"}, {"number": "INC0001"}], "UPSTREAM_ERROR"),
+    ],
+)
+def test_incident_v3_number_lookup_handles_missing_or_ambiguous_results(setup, records, code):
+    server, _, upstream = setup
+    upstream.list_records.return_value = records
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(
+                connection, "get_incident_v3", {"number": "INC0001"}
+            )
+            assert result.is_error
+            assert result.structured_content["code"] == code
+            assert "INC0001" not in str(result.structured_content)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {},
+        {"sys_id": None, "number": None},
+        {"sys_id": ID, "number": "INC0001"},
+        {"sys_id": "invalid"},
+        {"number": "inc0001"},
+    ],
+)
+def test_incident_v3_invalid_identifiers_fail_before_client_creation(setup, args):
+    server, factory, _ = setup
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(connection, "get_incident_v3", args)
+            assert result.is_error
+            assert result.structured_content["code"] == "VALIDATION_ERROR"
+            assert result.structured_content["outcome"] == "not_attempted"
+
+    asyncio.run(run())
+    factory.assert_not_called()
+
+
+def test_incident_v3_permission_denial_is_audited_without_identifier(setup, caplog):
+    server, _, upstream = setup
+    upstream.list_records.side_effect = OperationError(
+        "PERMISSION_DENIED", outcome="failed"
+    )
+    caplog.set_level(logging.INFO, logger="servicenow_mcp.tools.service_desk.incidents")
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(
+                connection, "get_incident_v3", {"number": "INC0001"}
+            )
+            assert result.is_error
+            assert result.structured_content["code"] == "PERMISSION_DENIED"
+
+    asyncio.run(run())
+    audit = [
+        record.incident_detail_audit
+        for record in caplog.records
+        if hasattr(record, "incident_detail_audit")
+    ]
+    assert audit[-1]["outcome"] == "error"
+    assert audit[-1]["error_code"] == "PERMISSION_DENIED"
+    assert all(value not in str(audit[-1]) for value in (ID, "INC0001"))
+
+
+def test_incident_search_denial_is_audited_without_filter_values(setup, caplog):
+    server, _, upstream = setup
+    caplog.set_level(logging.INFO, logger="servicenow_mcp.tools.service_desk.incidents")
+    upstream.list_records.side_effect = OperationError("PERMISSION_DENIED", outcome="failed")
+
+    async def run():
+        async with Client(server, mode="legacy") as connection:
+            result = await checked_call(
+                connection, "list_incidents", {"number": "INC0001"}
+            )
+            assert result.is_error
+            assert result.structured_content["code"] == "PERMISSION_DENIED"
+
+    asyncio.run(run())
+    audit = [
+        record.incident_search_audit
+        for record in caplog.records
+        if hasattr(record, "incident_search_audit")
+    ]
+    assert audit[-1]["outcome"] == "error"
+    assert audit[-1]["error_code"] == "PERMISSION_DENIED"
+    assert "INC0001" not in str(audit[-1])
+
+
+@pytest.mark.parametrize("name", ["get_incident", "get_incident_v3", "get_change_status"])
 @pytest.mark.parametrize(
     "record", [{}, {"sys_id": "b" * 32}, {"sys_id": ID, "state": 1}]
 )

@@ -367,6 +367,32 @@ def test_service_desk_reads_use_each_users_token(remote, monkeypatch, name, argu
         assert text in str(result.json()["result"]["structuredContent"])
     assert seen == ["Bearer sn-A", "Bearer sn-B"]
 
+
+def test_remote_audit_events_record_the_verified_servicenow_user(remote, monkeypatch, caplog):
+    import logging
+    import requests
+    client, _, _ = remote
+    tokens_a, _ = login(client, "A")
+    tokens_b, _ = login(client, "B")
+
+    def request(session, **kwargs):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b'{"result":[{"number":"INC0001","short_description":"VPN"}]}'
+        return response
+
+    monkeypatch.setattr(requests.Session, "request", request)
+    caplog.set_level(logging.INFO, logger="servicenow_mcp.tools.service_desk.incidents")
+    for token in (tokens_a["access_token"], tokens_b["access_token"]):
+        result = rpc(client, token, "tools/call",
+                     {"name": "list_incidents", "arguments": {"number": "INC0001"}})
+        assert result.json()["result"].get("isError") is not True, result.text
+    events = [r.incident_search_audit for r in caplog.records if hasattr(r, "incident_search_audit")]
+    assert [(e["identity"], e["identity_type"]) for e in events[-2:]] == [
+        (USER_A, "servicenow_user"), (USER_B, "servicenow_user")]
+    assert all("VPN" not in str(e) and "INC0001" not in str(e) for e in events)
+    assert all("sn-" not in str(e) for e in events)
+
 def test_refresh_is_client_bound(remote):
     client, _, upstream = remote
     tokens_a, form_a = login(client, "A")

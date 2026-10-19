@@ -27,6 +27,7 @@ from servicenow_mcp.tools.descriptions import (
     prepare_description,
     WRITE_LIFECYCLE,
 )
+from servicenow_mcp.tools.audit import audit_identity
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
 from .search import (
     INCIDENT_STATE_CODES,
@@ -221,6 +222,8 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
     def get_incident(
         sys_id: SysId | None = None,
         number: IncidentNumber | None = None,
+        *,
+        ctx: Context,
     ) -> dict:
         if (sys_id is None) == (number is None):
             raise ValueError("Supply exactly one of sys_id or number.")
@@ -269,9 +272,9 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             }
         except Exception as error:
             code = error.code if isinstance(error, OperationError) else "INTERNAL_ERROR"
-            _audit_incident_detail("error", code)
+            _audit_incident_detail(ctx, "error", code)
             raise
-        _audit_incident_detail("success")
+        _audit_incident_detail(ctx, "success")
         return result
 
     @mcp.prompt(name="get_incident")
@@ -354,7 +357,7 @@ def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=
         "tool": "list_incidents",
         "tool_version": "2.0.0",
         "operation": "search",
-        "identity": getattr(ctx, "client_id", None) or "unavailable",
+        **audit_identity(ctx),
         "filters": sorted(filter_names),
         "outcome": outcome,
         "result_count": result_count,
@@ -364,14 +367,14 @@ def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=
     logger.info("Incident search audit", extra={"incident_search_audit": event})
 
 
-def _audit_incident_detail(outcome, error_code=None):
+def _audit_incident_detail(ctx, outcome, error_code=None):
     """Write a value-free audit event for incident detail retrieval."""
     event = {
         "event": "incident_detail_retrieval",
         "tool": "get_incident",
         "tool_version": "3.0.0",
         "operation": "read",
-        "identity": "unavailable",
+        **audit_identity(ctx),
         "outcome": outcome,
     }
     if error_code:

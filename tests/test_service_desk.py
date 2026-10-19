@@ -404,7 +404,9 @@ def test_incident_detail_number_lookup_reports_exclusions_without_values(setup, 
         "tool": "get_incident",
         "tool_version": "3.0.0",
         "operation": "read",
-        "identity": "unavailable",
+        "identity": "configured_integration_account",
+        "identity_type": "integration_account",
+        "client": "unavailable",
         "outcome": "success",
     }
     assert all(value not in str(audit[-1]) for value in (ID, "INC0001", "VPN"))

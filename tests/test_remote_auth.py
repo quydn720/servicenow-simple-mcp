@@ -20,8 +20,8 @@ USER_A = "a" * 32
 USER_B = "b" * 32
 CALLBACK = "http://127.0.0.1:8766/callback"
 REMOTE_TOOLS = {
-    "list_records", "get_record", "list_incidents", "get_incident", "get_incident_v3",
-    "list_knowledge_articles", "get_change_status",
+    "list_records", "get_record", "list_incidents", "list_incidents_v2", "get_incident",
+    "get_incident_v2", "get_incident_v3", "list_knowledge_articles", "get_change_status",
 }
 
 

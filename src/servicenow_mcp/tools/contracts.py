@@ -141,6 +141,8 @@ INCIDENT_SEARCH_FIELDS = (
     "sys_updated_on",
 )
 INCIDENT_DETAIL_FIELDS = tuple(field for field in COMMON_FIELDS if field != "sys_id")
+# Choice fields returned as display labels by the v2/v3 incident contracts.
+INCIDENT_CHOICE_FIELDS = ("state", "priority")
 INCIDENT_DETAIL_EXCLUDED_CATEGORIES = (
     "journal_history",
     "attachments",

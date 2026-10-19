@@ -11,27 +11,35 @@ from servicenow_mcp.tools.contracts import (
     Summary,
     PREPARE_RESULTS,
     contract_tool,
+    COMMON_FIELDS,
+    INCIDENT_CHOICE_FIELDS,
     INCIDENT_SEARCH_FIELDS,
     INCIDENT_DETAIL_FIELDS,
     INCIDENT_DETAIL_EXCLUDED_CATEGORIES,
     IncidentRecord,
     IncidentSearchRecord,
+    Limit,
     Offset,
     PageLimit,
     SysId,
     JournalText,
     READ_RESULTS,
+    project_record,
+    project_records,
 )
 from servicenow_mcp.tools.descriptions import (
     prepare_description,
+    read_description,
     WRITE_LIFECYCLE,
 )
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
 from .search import (
-    ChoiceLabel,
+    INCIDENT_STATE_CODES,
+    IncidentStateLabel,
     SearchText,
     IncidentNumber,
     UtcDateTime,
+    PAGED_SEARCH_LIMITATIONS,
     SEARCH_LIMITATIONS,
 )
 
@@ -99,11 +107,63 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
     @contract_tool(
         mcp,
-        READ_RESULTS["incident", "search"],
-        description="Search incidents using one or more of exact incident number, literal short-description substring, state display label, assignment-group sys_id, caller sys_id, or sys_updated_on date bounds. Supplied filters are combined with AND. "
-        "Results contain only number, short_description, state, priority, sys_updated_on, and a number-filtered ServiceNow URL; choice and reference values use display labels and sys_id is omitted. "
-        "Caller results remain subject to the configured ServiceNow identity's ACLs. "
+        READ_RESULTS["incident", "list"],
+        description="Search incident records by a literal short_description substring, exact number, or both (AND). "
+        "Supply at least one non-null search_text or number. Supported/default fields: "
+        + ", ".join(COMMON_FIELDS)
+        + ". sys_id is raw, references are display names, other values are raw strings; unavailable fields may be omitted. "
         + SEARCH_LIMITATIONS,
+        input_schema_extra={
+            "anyOf": [
+                {
+                    "required": ["search_text"],
+                    "properties": {"search_text": {"type": "string"}},
+                },
+                {"required": ["number"], "properties": {"number": {"type": "string"}}},
+            ]
+        },
+    )
+    def list_incidents(
+        search_text: SearchText | None = None,
+        number: IncidentNumber | None = None,
+        limit: Limit = 10,
+    ) -> dict:
+        if search_text is None and number is None:
+            raise ValueError("A title substring or incident number is required.")
+        clauses = []
+        if number is not None:
+            clauses.append(f"number={number}")
+        if search_text is not None:
+            clauses.append(f"short_descriptionLIKE{search_text}")
+        records = client_factory().list_records(
+            "incident", query="^".join(clauses), fields=list(COMMON_FIELDS), limit=limit
+        )
+        records = project_records(records, "incident", COMMON_FIELDS, limit)
+        return {"table": "incident", "count": len(records), "records": records}
+
+    @contract_tool(
+        mcp,
+        READ_RESULTS["incident", "get"],
+        description=read_description("incident", COMMON_FIELDS, collection=False)
+        + "Incident details exclude attachments and journal/activity history.",
+    )
+    def get_incident(sys_id: SysId) -> dict:
+        record = project_record(
+            client_factory().get_record("incident", sys_id, fields=list(COMMON_FIELDS)),
+            "incident",
+        )
+        if record["sys_id"].lower() != sys_id.lower():
+            raise OperationError("UPSTREAM_ERROR", outcome="failed")
+        return {"table": "incident", "sys_id": sys_id, "record": record}
+
+    @contract_tool(
+        mcp,
+        READ_RESULTS["incident", "search"],
+        name="list_incidents_v2",
+        description="Search incidents using one or more of exact incident number, literal short-description substring, base-system state display label, assignment-group sys_id, caller sys_id, or sys_updated_on date bounds. Supplied filters are combined with AND. "
+        "Results contain only number, short_description, state, priority, sys_updated_on, and a number-filtered ServiceNow URL; state and priority use display labels, references use display names, sys_updated_on is a raw UTC timestamp, and sys_id is omitted. "
+        "Caller results remain subject to the configured ServiceNow identity's ACLs. "
+        + PAGED_SEARCH_LIMITATIONS,
         input_schema_extra={
             "anyOf": [
                 # Null leaves a filter unspecified, so it cannot satisfy this rule.
@@ -114,10 +174,10 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             ]
         },
     )
-    def list_incidents(
+    def list_incidents_v2(
         search_text: SearchText | None = None,
         number: IncidentNumber | None = None,
-        state: ChoiceLabel | None = None,
+        state: IncidentStateLabel | None = None,
         assignment_group: SysId | None = None,
         caller_id: SysId | None = None,
         updated_after: UtcDateTime | None = None,
@@ -151,7 +211,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
         if search_text is not None:
             clauses.append(f"short_descriptionLIKE{search_text}")
         if state is not None:
-            clauses.append(f"state={state}")
+            clauses.append(f"state={INCIDENT_STATE_CODES[state]}")
         if assignment_group is not None:
             clauses.append(f"assignment_group={assignment_group}")
         if caller_id is not None:
@@ -169,6 +229,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 limit=limit,
                 offset=offset,
                 order_by=["ORDERBYDESCsys_updated_on", "ORDERBYsys_id"],
+                display_fields=INCIDENT_CHOICE_FIELDS,
             )
             if not isinstance(raw_records, list) or len(raw_records) > limit:
                 raise OperationError("UPSTREAM_ERROR", outcome="failed")
@@ -190,7 +251,8 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @contract_tool(
         mcp,
         READ_RESULTS["incident", "detail"],
-        description="Retrieve approved incident details by sys_id or exact incident number. sys_id is never returned. Choice and reference values use display labels. Attachments and journal/activity history are excluded.",
+        name="get_incident_v2",
+        description="Retrieve approved incident details by sys_id or exact incident number. sys_id is never returned. State and priority use display labels, references use display names, and timestamps stay raw UTC. Attachments and journal/activity history are excluded.",
         input_schema_extra={
             "anyOf": [
                 {"required": ["sys_id"]},
@@ -198,7 +260,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             ]
         },
     )
-    def get_incident(
+    def get_incident_v2(
         sys_id: SysId | None = None, number: IncidentNumber | None = None
     ) -> dict:
         if (sys_id is None) == (number is None):
@@ -210,6 +272,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 query=f"number={number}",
                 fields=list(INCIDENT_DETAIL_FIELDS),
                 limit=1,
+                display_fields=INCIDENT_CHOICE_FIELDS,
             )
             if not records:
                 raise OperationError("NOT_FOUND", outcome="failed")
@@ -222,7 +285,10 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 raise OperationError("UPSTREAM_ERROR", outcome="failed")
         else:
             source = client.get_record(
-                "incident", sys_id, fields=["sys_id", *INCIDENT_DETAIL_FIELDS]
+                "incident",
+                sys_id,
+                fields=["sys_id", *INCIDENT_DETAIL_FIELDS],
+                display_fields=INCIDENT_CHOICE_FIELDS,
             )
             actual_id = source.get("sys_id")
             if not isinstance(actual_id, str) or actual_id.lower() != sys_id.lower():
@@ -236,7 +302,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
         mcp,
         READ_RESULTS["incident", "detail_v3"],
         name="get_incident_v3",
-        description="Retrieve one incident by its approved sys_id or exact incident number. Returns only the approved incident detail fields and a number-filtered ServiceNow URL. Work notes, comments, activity history, attachments, and non-allowlisted fields are excluded; omitted allowlisted fields are identified without inferring why they were absent. Access is enforced by the configured ServiceNow execution identity and ACLs. Read-only; no caller-selected fields or raw queries.",
+        description="Retrieve one incident by its approved sys_id or exact incident number. Returns only the approved incident detail fields and a number-filtered ServiceNow URL; state and priority use display labels, references use display names, and timestamps stay raw UTC. Work notes, comments, activity history, attachments, and non-allowlisted fields are excluded; omitted allowlisted fields are identified without inferring why they were absent. Access is enforced by the configured ServiceNow execution identity and ACLs. Read-only; no caller-selected fields or raw queries.",
         input_schema_extra={
             "oneOf": [
                 {
@@ -270,6 +336,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
                     query=f"number={number}",
                     fields=list(INCIDENT_DETAIL_FIELDS),
                     limit=2,
+                    display_fields=INCIDENT_CHOICE_FIELDS,
                 )
                 if not isinstance(records, list):
                     raise OperationError("UPSTREAM_ERROR", outcome="failed")
@@ -283,7 +350,10 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             else:
                 assert sys_id is not None
                 source = client.get_record(
-                    "incident", sys_id, fields=["sys_id", *INCIDENT_DETAIL_FIELDS]
+                    "incident",
+                    sys_id,
+                    fields=["sys_id", *INCIDENT_DETAIL_FIELDS],
+                    display_fields=INCIDENT_CHOICE_FIELDS,
                 )
                 if not isinstance(source, dict):
                     raise OperationError("UPSTREAM_ERROR", outcome="failed")
@@ -309,10 +379,10 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
         return result
 
     @mcp.prompt(name="get_incident")
-    def get_incident_prompt(number: str) -> str:
-        """Prepare a request to retrieve an incident by incident number."""
+    def get_incident_prompt(sys_id: str) -> str:
+        """Prepare a request to retrieve an incident by sys_id."""
         return (
-            f"Use the get_incident tool to retrieve the incident with number '{number}' "
+            f"Use the get_record tool to retrieve the incident with sys_id '{sys_id}' "
             "and return its number, short_description, state, and priority."
         )
 
@@ -385,7 +455,7 @@ def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=
     """Write a structured, value-free audit event for incident searches."""
     event = {
         "event": "incident_search",
-        "tool": "list_incidents",
+        "tool": "list_incidents_v2",
         "tool_version": "2.0.0",
         "operation": "search",
         "identity": getattr(ctx, "client_id", None) or "unavailable",

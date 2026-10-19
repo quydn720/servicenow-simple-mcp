@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BeforeValidator, Field
 
@@ -44,29 +44,22 @@ IncidentNumber = Annotated[
 ]
 
 
-def validate_choice_label(value):
-    if isinstance(value, str):
-        value = value.strip()
-        if (
-            not value
-            or "^" in value
-            or any(ord(char) < 32 or ord(char) == 127 for char in value)
-            or re.search(r"javascript\s*:", value, re.I)
-        ):
-            raise ValueError("A valid literal display label is required.")
-    return value
-
-
-ChoiceLabel = Annotated[
-    str,
+# Base-system incident state choices. Encoded queries match stored codes, not
+# labels, so labels are translated here. Verify against the target instance:
+# customized state choices require updating this mapping.
+INCIDENT_STATE_CODES = {
+    "New": "1",
+    "In Progress": "2",
+    "On Hold": "3",
+    "Resolved": "6",
+    "Closed": "7",
+    "Canceled": "8",
+}
+IncidentStateLabel = Annotated[
+    Literal["New", "In Progress", "On Hold", "Resolved", "Closed", "Canceled"],
     Field(
-        strict=True,
-        min_length=1,
-        max_length=100,
-        pattern=r"^[^\x00-\x1f\x7f^]+$",
-        description="Literal choice display label; query syntax and control characters are prohibited.",
+        description="Base-system incident state display label; translated to its stored choice code.",
     ),
-    BeforeValidator(validate_choice_label),
 ]
 
 
@@ -98,9 +91,24 @@ UtcDateTime = Annotated[
     BeforeValidator(validate_utc_datetime),
 ]
 
-SEARCH_LIMITATIONS = (
+SEARCH_RULES = (
     "Searches are literal title substring matches, not full-text or semantic search. "
     "Caller-supplied raw queries and executable expressions are prohibited. "
-    "Limit defaults to 10 and must be 1–100. Count is the returned count, not the total. "
+)
+READ_ONLY_RETRY = (
     "Read-only: no record writes or confirmation. Only retry errors marked retryable=true. "
+)
+SEARCH_LIMITATIONS = (
+    SEARCH_RULES
+    + "Limit defaults to 10 and must be 1–100; no pagination. Order is determined by "
+    "ServiceNow and is not guaranteed. Count is the returned count, not the total; "
+    "there is no truncation indicator and a full page may have more matches. "
+    + READ_ONLY_RETRY
+)
+PAGED_SEARCH_LIMITATIONS = (
+    SEARCH_RULES
+    + "Limit defaults to 10 and must be 1–100 per page. Results are ordered by "
+    "sys_updated_on descending, then sys_id. A full page includes next_offset for the "
+    "next page; offsets are 0–100000. Count is the returned count, not the total. "
+    + READ_ONLY_RETRY
 )

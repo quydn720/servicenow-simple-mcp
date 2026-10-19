@@ -39,9 +39,9 @@ def api_record():
 
 EXPECTED = {
     "sys_id": ID, "number": "INC0010001", "assignment_group": "Service Desk",
-    "assigned_to": "", "caller_id": "", "priority": "3 - Moderate",
-    "state": "Open",
-    "sys_created_on": "2026-10-06 14:00:00", "active": "true",
+    "assigned_to": "", "caller_id": "", "priority": "3",
+    "state": "1",
+    "sys_created_on": "2026-10-06 07:00:00", "active": "true",
     "short_description": "Printer problem",
 }
 
@@ -86,6 +86,16 @@ def test_reference_names_across_table_operations(client, operation, method):
         assert params["sysparm_limit"] == 5
         assert "sysparm_offset" not in params
 
+
+
+def test_display_fields_opt_in_to_choice_labels_only(client):
+    client.session.request.return_value = Mock(
+        status_code=200, json=Mock(return_value={"result": [api_record()]})
+    )
+    [record] = client.list_records("incident", display_fields=("state", "priority"))
+    assert record == {**EXPECTED, "state": "Open", "priority": "3 - Moderate"}
+    # Timestamps and other fields stay raw even when labels are requested.
+    assert record["sys_created_on"] == "2026-10-06 07:00:00"
 
 def test_pagination_parameters_are_forwarded(client):
     client.session.request.return_value = Mock(

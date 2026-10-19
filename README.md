@@ -4,7 +4,8 @@
 
 A separate read-only Streamable HTTP server supports per-user ServiceNow OAuth
 through corporate SSO, with approved MCP client callbacks and encrypted token
-storage. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
+storage. It can be added to Claude as a custom connector. It offers the common
+record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
 `python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
 server described below remains available.
 
@@ -180,7 +181,8 @@ stop the stdio MCP server. The dashboard is bound to localhost only.
 Returned records use display names for reference fields, such as
 `"assignment_group": "Service Desk"` and `"assigned_to": "Jane Doe"`.
 This applies to list, get, create, and update responses. The record's own
-`sys_id`, choice codes, and timestamps retain their raw values. Queries and
+`sys_id`, choice codes, and timestamps retain their raw values. The incident
+v2/v3 tools are the exception: they return `state` and `priority` as display labels. Queries and
 write payloads still use reference sys_ids.
 
 ### Raw-query security change
@@ -198,7 +200,7 @@ security restriction; remaining contract migrations are separate work.
 
 ### Typed tool contracts
 
-All 20 local tools (and the two shared remote read tools) publish explicit
+All 23 local tools (and the nine shared remote read tools) publish explicit
 input/output schemas and validate arguments and results. See
 [implemented tool contracts](docs/tool-contracts.md) for field allowlists,
 limits, result variants, and compatibility changes. Existing names and response
@@ -230,7 +232,7 @@ MCP_ENABLED_FEATURES=common,service_desk,product_owner
 | Group | Registered tools and prompts |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
+| `service_desk` | `list_incidents`, `list_incidents_v2`, `get_incident`, `get_incident_v2`, `get_incident_v3`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
 | `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
 | `developer` | Reserved for future catalog use cases; currently empty |
 
@@ -238,7 +240,10 @@ Omitting the setting enables the first three groups and preserves existing
 tool names and existing story arguments. Whitespace and duplicate names are accepted. Unknown groups
 or an explicitly empty list stop startup. Groups control MCP discovery; they do
 not change ServiceNow ACLs. The incident prompt references `get_record`, so enable
-`common` alongside `service_desk` when using that prompt.
+`common` alongside `service_desk` when using that prompt. Clients can opt into
+`list_incidents_v2` and `get_incident_v2` for number lookup, display labels, and
+pagination, or into `get_incident_v3` for explicit
+exclusion and omitted-field metadata.
 
 ## Architecture and adding tools
 

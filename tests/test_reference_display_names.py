@@ -28,6 +28,7 @@ def api_record():
         "assigned_to": {"display_value": "", "value": ""},
         "caller_id": {"display_value": "", "value": "c" * 32, "link": ""},
         "priority": {"display_value": "3 - Moderate", "value": "3"},
+        "state": {"display_value": "Open", "value": "1"},
         "sys_created_on": {
             "display_value": "2026-10-06 14:00:00", "value": "2026-10-06 07:00:00",
         },
@@ -39,6 +40,7 @@ def api_record():
 EXPECTED = {
     "sys_id": ID, "number": "INC0010001", "assignment_group": "Service Desk",
     "assigned_to": "", "caller_id": "", "priority": "3",
+    "state": "1",
     "sys_created_on": "2026-10-06 07:00:00", "active": "true",
     "short_description": "Printer problem",
 }
@@ -82,6 +84,36 @@ def test_reference_names_across_table_operations(client, operation, method):
     if operation == "list":
         assert params["sysparm_query"] == f"assignment_group={GROUP_ID}"
         assert params["sysparm_limit"] == 5
+        assert "sysparm_offset" not in params
+
+
+
+def test_display_fields_opt_in_to_choice_labels_only(client):
+    client.session.request.return_value = Mock(
+        status_code=200, json=Mock(return_value={"result": [api_record()]})
+    )
+    [record] = client.list_records("incident", display_fields=("state", "priority"))
+    assert record == {**EXPECTED, "state": "Open", "priority": "3 - Moderate"}
+    # Timestamps and other fields stay raw even when labels are requested.
+    assert record["sys_created_on"] == "2026-10-06 07:00:00"
+
+def test_pagination_parameters_are_forwarded(client):
+    client.session.request.return_value = Mock(
+        status_code=200, json=Mock(return_value={"result": []})
+    )
+    client.list_records(
+        "incident",
+        query="number=INC0001",
+        limit=20,
+        offset=40,
+        order_by=["ORDERBYDESCsys_updated_on", "ORDERBYsys_id"],
+    )
+    params = client.session.request.call_args.kwargs["params"]
+    assert params["sysparm_limit"] == 20
+    assert params["sysparm_offset"] == 40
+    assert params["sysparm_query"] == (
+        "number=INC0001^ORDERBYDESCsys_updated_on^ORDERBYsys_id"
+    )
 
 
 @pytest.mark.parametrize("body,expected", [

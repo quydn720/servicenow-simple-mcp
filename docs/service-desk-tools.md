@@ -1,8 +1,12 @@
 # Service-desk tool specifications
 
-The local `service_desk` feature supplies these workflows. It does not add tools
-to the remote server, which still exposes only the common read tools. Discovery
-does not need credentials. Responsible ownership is the service-desk tool
+The local `service_desk` feature supplies these workflows. Supported deployment
+modes: local stdio provides every tool below. The remote OAuth server
+(`servicenow_mcp.servers.remote`) also provides the read-only `list_incidents`,
+`list_incidents_v2`, `get_incident`, `get_incident_v2`, `get_incident_v3`,
+`list_knowledge_articles`, and `get_change_status`, executed with the connected user's ServiceNow token. Write
+preparation tools stay local-only, because previews are session-bound and the
+remote server uses stateless HTTP. Discovery does not need credentials. Responsible ownership is the service-desk tool
 maintainers; the deploying platform owner must record verified instance roles,
 field limits, choices, and ACL prerequisites before release. These initial
 specifications do not certify full project compliance or live-instance behavior.
@@ -12,7 +16,7 @@ start at **1.0.0**, independent of package and MCP versions. Each new tool has
 initial input/output snapshots linked below. Initial
 changelog: introduce the specified bounded workflow. Compatible additions receive
 a minor version; corrections receive a patch version; breaking changes require a
-major version and a new tool name with `_v2`, retaining a migration period under
+major version and a new tool name with the corresponding suffix (`_v2`, `_v3`, etc.), retaining a migration period under
 the [design standard](mcp-tool-design-standard.md#5-contract-versioning).
 The existing `create_incident` contract is reused without changing its arguments
 or successful result shapes; historical versioning for existing tools remains
@@ -39,16 +43,20 @@ operation; ServiceNow enforces current ACLs. Preview creation validates locally
 and does not prove that the identity can perform the eventual write. Feature
 selection and confirmation IDs do not grant authority. There is no universal role
 assertion: actual roles, scopes, and record restrictions remain instance review
-requirements. The existing lack of explicit per-tool authorization and complete
-audit records remains a [compliance gap](mcp-tool-design-standard.md#current-compliance-gaps).
+requirements. Complete audit coverage across every tool remains a
+[compliance gap](mcp-tool-design-standard.md#current-compliance-gaps); incident
+search emits the safe audit event described below.
 
 Read results use `{table, count, records}` for searches and
 `{table, sys_id, record}` for retrieval. Returned sys_ids stay raw; references are
-display names, other values are raw strings, and unavailable fields may be omitted.
-Outputs discard undeclared upstream fields, require a valid sys_id, check retrieved
-IDs against the requested ID, and validate types and bounds before returning.
-Search count is the returned length, not the total; ordering is unspecified and
-there is no pagination or truncation indicator. An empty search is successful.
+display names, other values are raw strings (choice codes and UTC timestamps), and
+unavailable fields may be omitted. Outputs discard undeclared upstream fields,
+check retrieved IDs against the requested ID, and validate types and bounds before
+returning. Search count is the returned length, not the total; ordering is
+unspecified and there is no pagination or truncation indicator. An empty search is
+successful. The incident v2/v3 contracts below differ: they omit `sys_id`, return
+`state` and `priority` as display labels, accept an exact incident number, and
+`list_incidents_v2` is ordered and paginated.
 
 All tools publish the standard structured error variant with MCP `isError: true`.
 Applicable read/preparation errors:
@@ -103,6 +111,95 @@ Schemas: [input](tool-contracts/get_incident/1.0.0/input.schema.json),
 
 Example arguments: `{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`.
 Example result: `{"table":"incident","sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","record":{"sys_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","number":"INC0001","state":"2"}}`.
+
+Version 2.0.0 contracts were breaking changes, so they use new tool names under
+the [design standard](mcp-tool-design-standard.md#5-contract-versioning). The
+1.0.0 `list_incidents` and `get_incident` tools remain registered unchanged. Clients
+opt in by calling `list_incidents_v2` or `get_incident_v2`.
+
+## `list_incidents_v2` — 2.0.0
+
+Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
+Inputs: at least one of `search_text`, exact `number` (`INC` plus 1–20 digits),
+base-system state label, assignment-group sys_id, caller sys_id, `updated_after`, or
+`updated_before` is required. Filters combine with AND. `state` accepts only
+`New`, `In Progress`, `On Hold`, `Resolved`, `Closed`, or `Canceled`, which the
+server translates to the stored choice codes 1, 2, 3, 6, 7, and 8. Encoded queries
+match stored codes, not labels. Instances with customized incident states must
+update `INCIDENT_STATE_CODES` in `search.py` before release. Search text is a literal
+`short_description` substring. Date bounds are RFC 3339 UTC values applied to
+`sys_updated_on`; the start is inclusive and the end exclusive. `limit` is 1–100
+(default 10), and `offset` is 0–100000 (default 0). Results are ordered by update
+time descending with sys_id as a hidden tie-breaker. A full page may include
+`next_offset`; that field is omitted at the offset ceiling. Caller records and
+fields remain subject to the configured ServiceNow identity's ACLs.
+
+Returned fields: number, its `url` filtered by incident number, short_description,
+state, priority, and sys_updated_on. The URL opens the ServiceNow incident list
+filtered to that ticket; it contains no sys_id. `state` and `priority` use their
+ServiceNow display labels, references use display names, and `sys_updated_on` stays
+a raw UTC timestamp. Search activity is audit logged with the MCP client identity when
+available, filter names, outcome, and result count; values and record identifiers
+are not logged.
+
+Schemas: [input](tool-contracts/list_incidents_v2/2.0.0/input.schema.json),
+[output](tool-contracts/list_incidents_v2/2.0.0/output.schema.json).
+
+Example arguments: `{"search_text":"VPN","state":"In Progress","limit":1}`.
+Example result: `{"table":"incident","count":1,"records":[{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","short_description":"VPN unavailable","state":"In Progress","priority":"Low - 4"}],"next_offset":1}`.
+
+## `get_incident_v2` — 2.0.0
+
+Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
+Requires exactly one of `sys_id` or exact incident `number`. Returns one approved
+incident record with a number-filtered `url`; neither the response nor URL exposes
+sys_id. `state` and `priority` use display labels, references use display names,
+and timestamps stay raw UTC. Attachments and journal/activity history are excluded. No field-selection
+argument, bulk read, pagination, or write behavior.
+
+Schemas: [input](tool-contracts/get_incident_v2/2.0.0/input.schema.json),
+[output](tool-contracts/get_incident_v2/2.0.0/output.schema.json).
+
+Example arguments: `{"number":"INC0001"}`.
+Example result: `{"table":"incident","record":{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","state":"In Progress","priority":"Low - 4"}}`.
+
+## `get_incident_v3` — 3.0.0
+
+Module: `tools/service_desk/incidents.py`. Read-only, fixed `incident` table.
+Requires exactly one non-null `sys_id` or exact incident `number`. Uses the
+configured local ServiceNow identity and its ACLs; this tool does not delegate
+analyst identity or allow a caller to request additional fields. The approved
+detail fields remain number, short_description, description, state, priority,
+assignment_group, assigned_to, caller_id, active, sys_created_on, and
+sys_updated_on. The response adds a number-filtered `url`; sys_id is not returned.
+
+The required `redaction` object always lists `journal_history`, `attachments`,
+and `non_allowlisted_fields` in `excluded_categories`. These are policy
+exclusions, not claims that such content existed. `omitted_fields` lists
+allowlisted fields absent from the returned record; absence does not establish
+that an ACL caused it. Work notes, comments, activity history, attachment
+metadata/content, and non-allowlisted fields are not requested or returned.
+This initial release does not expose those fields even when the configured
+identity has access, and it does not scan approved free text for PII.
+
+Number lookup is bounded to two results to detect ambiguity. No match returns
+the standard safe `NOT_FOUND`; malformed or ambiguous results return
+`UPSTREAM_ERROR`. Access-denied and missing-record messages do not disclose
+whether an inaccessible record exists. A value-free audit event records tool,
+version, operation, outcome, and safe error code; the ServiceNow identity is
+reported as unavailable because the current client does not expose a verified
+identity label. It is registered by the local `service_desk` feature and the
+remote server; the existing `get_incident` tool and prompt remain available unchanged.
+
+Schemas: [input](tool-contracts/get_incident_v3/3.0.0/input.schema.json),
+[output](tool-contracts/get_incident_v3/3.0.0/output.schema.json).
+
+Example arguments: `{"number":"INC0001"}`.
+Example result: `{"table":"incident","record":{"number":"INC0001","url":"https://instance.service-now.com/incident_list.do?sysparm_query=number%3DINC0001","state":"In Progress"},"redaction":{"excluded_categories":["journal_history","attachments","non_allowlisted_fields"],"omitted_fields":["short_description","description","priority","assignment_group","assigned_to","caller_id","active","sys_created_on","sys_updated_on"]}}`.
+
+Migration is opt-in: clients that need the new redaction metadata can call
+`get_incident_v3`; the existing `get_incident` 1.0.0 and `get_incident_v2` 2.0.0
+contracts and their schema snapshots are unchanged. This release does not deprecate or remove the existing tool.
 
 ## `list_knowledge_articles` — 1.0.0
 

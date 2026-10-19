@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urlparse
 
 import requests
@@ -34,6 +34,7 @@ class ServiceNowClient:
         path: str,
         params: Optional[Dict[str, Any]] = None,
         json_body: Optional[Dict[str, Any]] = None,
+        display_fields: Sequence[str] = (),
     ) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
         if path.startswith("/table/"):
@@ -105,22 +106,36 @@ class ServiceNowClient:
         if path.startswith("/table/"):
             result = body.get("result")
             if isinstance(result, dict):
-                body["result"] = self._display_record(result)
+                body["result"] = self._display_record(result, display_fields)
             elif isinstance(result, list):
                 if any(not isinstance(record, dict) for record in result):
                     raise OperationError(
                         "UPSTREAM_ERROR", outcome="unknown" if write else "failed"
                     )
-                body["result"] = [self._display_record(record) for record in result]
+                body["result"] = [
+                    self._display_record(record, display_fields) for record in result
+                ]
         return body
 
     @staticmethod
-    def _display_record(record: Dict[str, Any]) -> Dict[str, Any]:
-        """Flatten Table API field wrappers, using display names for references."""
+    def _display_record(
+        record: Dict[str, Any], display_fields: Sequence[str] = ()
+    ) -> Dict[str, Any]:
+        """Flatten Table API field wrappers, using display names for references.
+
+        Other fields keep raw values, so choice codes and UTC timestamps stay
+        stable, unless a caller lists them in display_fields.
+        """
+
+        def flatten(field: str, value: Dict[str, Any]) -> Any:
+            if "link" in value:
+                return value.get("display_value", "")
+            if field in display_fields and value.get("display_value") is not None:
+                return value["display_value"]
+            return value["value"]
+
         return {
-            field: (
-                value.get("display_value", "") if "link" in value else value["value"]
-            )
+            field: flatten(field, value)
             if isinstance(value, dict) and "value" in value
             else value
             for field, value in record.items()
@@ -132,17 +147,28 @@ class ServiceNowClient:
         query: Optional[str] = None,
         fields: Optional[List[str]] = None,
         limit: int = 10,
+        offset: int = 0,
+        order_by: Optional[List[str]] = None,
+        display_fields: Sequence[str] = (),
     ) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {
             "sysparm_limit": min(max(limit, 1), 100),
         }
+        if offset:
+            params["sysparm_offset"] = max(offset, 0)
 
         if query:
             params["sysparm_query"] = query
         if fields:
             params["sysparm_fields"] = ",".join(fields)
+        if order_by:
+            params["sysparm_query"] = "^".join(
+                [part for part in (query, *order_by) if part]
+            )
 
-        result = self._request("GET", f"/table/{table}", params=params)
+        result = self._request(
+            "GET", f"/table/{table}", params=params, display_fields=display_fields
+        )
         return result.get("result", [])
 
     def get_record(
@@ -150,12 +176,18 @@ class ServiceNowClient:
         table: str,
         sys_id: str,
         fields: Optional[List[str]] = None,
+        display_fields: Sequence[str] = (),
     ) -> Dict[str, Any]:
         params: Dict[str, Any] = {}
         if fields:
             params["sysparm_fields"] = ",".join(fields)
 
-        result = self._request("GET", f"/table/{table}/{sys_id}", params=params)
+        result = self._request(
+            "GET",
+            f"/table/{table}/{sys_id}",
+            params=params,
+            display_fields=display_fields,
+        )
         record = result.get("result")
         if record is None or record == {}:
             raise OperationError("NOT_FOUND", outcome="failed")

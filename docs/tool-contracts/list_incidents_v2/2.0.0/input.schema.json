@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "search_text": {
+      "anyOf": [
+        {
+          "description": "Literal title substring, 1\u2013160 characters after trimming. No encoded-query delimiters, control characters, or javascript expressions.",
+          "maxLength": 160,
+          "minLength": 1,
+          "not": {
+            "pattern": "[jJ][aA][vV][aA][sS][cC][rR][iI][pP][tT]\\s*:"
+          },
+          "pattern": "^[^\\x00-\\x1f\\x7f^]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Literal title substring, 1\u2013160 characters after trimming. No encoded-query delimiters, control characters, or javascript expressions."
+    },
+    "number": {
+      "anyOf": [
+        {
+          "description": "Exact incident number, uppercase INC followed by 1\u201320 digits.",
+          "pattern": "^INC[0-9]{1,20}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Exact incident number, uppercase INC followed by 1\u201320 digits."
+    },
+    "state": {
+      "anyOf": [
+        {
+          "description": "Base-system incident state display label; translated to its stored choice code.",
+          "enum": [
+            "New",
+            "In Progress",
+            "On Hold",
+            "Resolved",
+            "Closed",
+            "Canceled"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Base-system incident state display label; translated to its stored choice code."
+    },
+    "assignment_group": {
+      "anyOf": [
+        {
+          "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+          "pattern": "^[0-9a-fA-F]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Raw 32-character hexadecimal ServiceNow sys_id; never a display name."
+    },
+    "caller_id": {
+      "anyOf": [
+        {
+          "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+          "pattern": "^[0-9a-fA-F]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Raw 32-character hexadecimal ServiceNow sys_id; never a display name."
+    },
+    "updated_after": {
+      "anyOf": [
+        {
+          "description": "RFC 3339 UTC date-time; inclusive start or exclusive end.",
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. RFC 3339 UTC date-time; inclusive start or exclusive end."
+    },
+    "updated_before": {
+      "anyOf": [
+        {
+          "description": "RFC 3339 UTC date-time; inclusive start or exclusive end.",
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. RFC 3339 UTC date-time; inclusive start or exclusive end."
+    },
+    "limit": {
+      "default": 10,
+      "description": "Maximum returned records per page, from 1 to 100; default 10.",
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "offset": {
+      "default": 0,
+      "description": "Zero-based result offset, from 0 to 100000.",
+      "maximum": 100000,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "search_text"
+      ],
+      "properties": {
+        "search_text": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "number"
+      ],
+      "properties": {
+        "number": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "assignment_group"
+      ],
+      "properties": {
+        "assignment_group": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "caller_id"
+      ],
+      "properties": {
+        "caller_id": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "updated_after"
+      ],
+      "properties": {
+        "updated_after": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "updated_before"
+      ],
+      "properties": {
+        "updated_before": {
+          "not": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

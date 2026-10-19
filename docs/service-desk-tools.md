@@ -1,8 +1,12 @@
 # Service-desk tool specifications
 
-The local `service_desk` feature supplies these workflows. It does not add tools
-to the remote server, which still exposes only the common read tools. Discovery
-does not need credentials. Responsible ownership is the service-desk tool
+The local `service_desk` feature supplies these workflows. Supported deployment
+modes: local stdio provides every tool below. The remote OAuth server
+(`servicenow_mcp.servers.remote`) also provides the read-only `list_incidents`,
+`get_incident`, `get_incident_v3`, `list_knowledge_articles`, and
+`get_change_status`, executed with the connected user's ServiceNow token. Write
+preparation tools stay local-only, because previews are session-bound and the
+remote server uses stateless HTTP. Discovery does not need credentials. Responsible ownership is the service-desk tool
 maintainers; the deploying platform owner must record verified instance roles,
 field limits, choices, and ACL prerequisites before release. These initial
 specifications do not certify full project compliance or live-instance behavior.

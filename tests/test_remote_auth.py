@@ -19,6 +19,10 @@ from servicenow_mcp.servers.remote import create_remote_server, encrypted_storag
 USER_A = "a" * 32
 USER_B = "b" * 32
 CALLBACK = "http://127.0.0.1:8766/callback"
+REMOTE_TOOLS = {
+    "list_records", "get_record", "list_incidents", "get_incident", "get_incident_v3",
+    "list_knowledge_articles", "get_change_status",
+}
 
 
 @pytest.fixture
@@ -186,7 +190,7 @@ def test_legacy_protocol_client_and_host_origin_guards(remote):
     tools = client.post("/mcp", headers=headers,
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
     assert tools.status_code == 200, tools.text
-    assert {t["name"] for t in tools.json()["result"]["tools"]} == {"list_records", "get_record"}
+    assert {t["name"] for t in tools.json()["result"]["tools"]} == REMOTE_TOOLS
     for extra in ({"Host": "evil.example"}, {"Origin": "https://evil.example"}):
         rejected = client.post("/mcp", headers={**headers, **extra}, json={})
         assert rejected.status_code in (403, 421)
@@ -302,7 +306,7 @@ def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatc
     monkeypatch.setenv("SERVICENOW_OAUTH_ACCESS_TOKEN", "shared-admin-token")
     tools = rpc(client, tokens_a["access_token"], "tools/list")
     assert tools.status_code == 200, tools.text
-    assert {t["name"] for t in tools.json()["result"]["tools"]} == {"list_records", "get_record"}
+    assert {t["name"] for t in tools.json()["result"]["tools"]} == REMOTE_TOOLS
     def read(token):
         result = rpc(client, token, "tools/call", {"name": "list_records", "arguments": {"table": "incident"}})
         assert result.status_code == 200, result.text
@@ -319,6 +323,47 @@ def test_two_users_concurrent_reads_acl_errors_and_revocation(remote, monkeypatc
     assert rpc(client, tokens_a["access_token"], "tools/list").status_code == 401
     assert rpc(client, tokens_b["access_token"], "tools/list").status_code == 200
 
+
+
+def test_remote_exposes_only_read_tools(remote):
+    client, _, _ = remote
+    tokens, _ = login(client, "A")
+    tools = rpc(client, tokens["access_token"], "tools/list").json()["result"]["tools"]
+    names = {tool["name"] for tool in tools}
+    assert names == REMOTE_TOOLS
+    assert not {name for name in names if name.startswith(("create_", "update_", "confirm_"))}
+
+
+@pytest.mark.parametrize("name,arguments,table,text", [
+    ("list_incidents", {"number": "INC0001"}, "incident", "INC0001"),
+    ("list_knowledge_articles", {"search_text": "VPN"}, "kb_knowledge", "KB0001"),
+])
+def test_service_desk_reads_use_each_users_token(remote, monkeypatch, name, arguments, table, text):
+    import requests
+    client, _, _ = remote
+    tokens_a, _ = login(client, "A")
+    tokens_b, _ = login(client, "B")
+    seen = []
+
+    def request(session, **kwargs):
+        assert kwargs["method"] == "GET"
+        assert urlparse(kwargs["url"]).path == "/api/now/table/" + table
+        seen.append(session.headers["Authorization"])
+        response = requests.Response()
+        response.status_code = 200
+        response._content = (b'{"result":[{"sys_id":"' + USER_A.encode()
+                             + b'","number":"' + text.encode()
+                             + b'","short_description":"VPN"}]}')
+        return response
+
+    monkeypatch.setattr(requests.Session, "request", request)
+    monkeypatch.setenv("SERVICENOW_OAUTH_ACCESS_TOKEN", "shared-admin-token")
+    for token in (tokens_a["access_token"], tokens_b["access_token"]):
+        result = rpc(client, token, "tools/call", {"name": name, "arguments": arguments})
+        assert result.status_code == 200, result.text
+        assert result.json()["result"].get("isError") is not True, result.text
+        assert text in str(result.json()["result"]["structuredContent"])
+    assert seen == ["Bearer sn-A", "Bearer sn-B"]
 
 def test_refresh_is_client_bound(remote):
     client, _, upstream = remote
@@ -356,6 +401,9 @@ def test_no_shared_fallback_or_write_access(settings, monkeypatch):
     client = factory()
     assert client.session.headers["Authorization"] == "Bearer sn-A"
     for operation in (lambda: client.create_record("incident", {}),
+                      lambda: client.create_record("kb_knowledge", {}),
+                      lambda: client.update_record("kb_knowledge", USER_A, {}),
+                      lambda: client.list_records("sys_user"),
                       lambda: client.get_record("incident", "../../sys_user")):
         with pytest.raises(RuntimeError):
             operation()

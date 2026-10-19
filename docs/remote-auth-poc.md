@@ -9,7 +9,12 @@ ServiceNow remains the authority for roles, record ACLs, field ACLs, and API acc
 
 This POC is a separate, read-only entry point: `python -m servicenow_mcp.servers.remote`.
 It exposes `list_records` and `get_record` for `incident`, `task`, `sc_task`,
-`problem`, and `change_request`. It does not grant roles, accept user IDs as
+`problem`, and `change_request`, plus the read-only service-desk tools
+`list_incidents`, `get_incident`, `get_incident_v3`, `list_knowledge_articles`,
+and `get_change_status` (see [service-desk specifications](service-desk-tools.md)).
+The outbound client allows only GET Table API requests to those five tables and
+`kb_knowledge`. Knowledge results rely on the user's `kb_knowledge` table and
+field ACLs. They don't evaluate portal user criteria. It does not grant roles, accept user IDs as
 identity assertions, impersonate users, or use the local integration account.
 The existing stdio entry point and write-preview tools are separate.
 
@@ -89,7 +94,8 @@ contains the resource script, not an automatically deployed ServiceNow applicati
    grant broad user-table read access. Use [poc_identity.js](../servicenow/poc_identity.js).
    It returns only the current caller's ID and username, checks their active flag,
    and rejects guests. Configure OAuth endpoint restrictions/scopes, if used on
-   your instance, to allow both this endpoint and the intended Table API reads.
+   your instance, to allow both this endpoint and the intended Table API reads,
+including `kb_knowledge`.
 5. Verify the identity response with a personal OAuth token:
    `{"result":{"sys_id":"<32 lowercase hex characters>","user_name":"user.a"}}`.
    ServiceNow adds the `result` envelope around `response.setBody`; the script
@@ -233,7 +239,9 @@ the OAuth client. Leave fixed request credentials unset: the ServiceNow client
 ID and secret belong only in the broker configuration, not in Claude.
 
 Complete broker consent and ServiceNow sign-in, then enable the connector for a
-conversation. Only `list_records` and `get_record` should be available. Complete
+conversation. Only the seven read tools should be available: `list_records`,
+`get_record`, `list_incidents`, `get_incident`, `get_incident_v3`,
+`list_knowledge_articles`, and `get_change_status`. Complete
 the two-user ACL, refresh, revocation, and restart checks below before accepting
 the pilot; passing mock tests is not proof of live Claude or ServiceNow access.
 
@@ -290,6 +298,7 @@ Before accepting the live POC, use two non-admin users with different ACLs:
 | Check | Expected |
 | --- | --- |
 | A lists incidents without an HR filter | Only ACL-readable records/fields returned |
+| A searches incidents and knowledge with `list_incidents` / `list_knowledge_articles` | Only records A can read in ServiceNow |
 | A gets a forbidden record by known sys_id | No protected record returned |
 | A requests a forbidden field explicitly | No protected field returned |
 | A and B read concurrently, including through different clients | Each gets only their authorized data |

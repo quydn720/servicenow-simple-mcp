@@ -90,6 +90,13 @@ def _incident_detail_record(record: dict, instance_url: str) -> dict:
 
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
+    register_reads(mcp, client_factory)
+    register_writes(mcp, client_factory)
+
+
+def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
+    """Read-only incident tools; safe for stateless remote servers."""
+
     @contract_tool(
         mcp,
         READ_RESULTS["incident", "search"],
@@ -301,6 +308,16 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         _audit_incident_detail_v3("success")
         return result
 
+    @mcp.prompt(name="get_incident")
+    def get_incident_prompt(number: str) -> str:
+        """Prepare a request to retrieve an incident by incident number."""
+        return (
+            f"Use the get_incident tool to retrieve the incident with number '{number}' "
+            "and return its number, short_description, state, and priority."
+        )
+
+
+def register_writes(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @contract_tool(
         mcp,
         PREPARE_RESULTS["incident", "update"],
@@ -362,13 +379,6 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
             {"short_description": short_description.strip()},
         )
 
-    @mcp.prompt(name="get_incident")
-    def get_incident_prompt(number: str) -> str:
-        """Prepare a request to retrieve an incident by incident number."""
-        return (
-            f"Use the get_incident tool to retrieve the incident with number '{number}' "
-            "and return its number, short_description, state, and priority."
-        )
 
 
 def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=None):

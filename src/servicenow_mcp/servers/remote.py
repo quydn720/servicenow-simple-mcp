@@ -11,6 +11,7 @@ from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 from servicenow_mcp.auth.servicenow_remote import create_auth, user_client_factory
 from servicenow_mcp.config.remote import RemoteSettings
+from servicenow_mcp.tools import service_desk
 from servicenow_mcp.tools.common.records import register
 
 
@@ -26,9 +27,16 @@ def encrypted_storage(settings: RemoteSettings):
 
 def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=None):
     auth = create_auth(settings, storage if storage is not None else encrypted_storage(settings), http_client)
-    server = ErrorReportingServer("servicenow-user-auth-poc", auth=auth,
-                     instructions="Read-only ServiceNow tools. ServiceNow enforces the connected user's ACLs.")
-    register(server, user_client_factory(settings))
+    server = ErrorReportingServer(
+        "servicenow-user-auth-poc", auth=auth,
+        instructions="Read-only ServiceNow tools for records, incidents, published knowledge "
+        "summaries, and change status. No create, update, or confirmation tools exist. "
+        "ServiceNow enforces the connected user's ACLs.",
+    )
+    client_factory = user_client_factory(settings)
+    register(server, client_factory)
+    # Write previews are session-bound and unsupported over stateless HTTP.
+    service_desk.register_reads(server, client_factory)
     return server
 
 

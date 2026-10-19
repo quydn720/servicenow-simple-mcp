@@ -1,10 +1,11 @@
-# Easy MCP Server
+# ServiceNow MCP Server
 
 ## Remote end-user authorization POC
 
 A separate read-only Streamable HTTP server supports per-user ServiceNow OAuth
 through corporate SSO, with approved MCP client callbacks and encrypted token
-storage. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
+storage. It can be added to Claude as a custom connector. It offers the common
+record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
 `python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
 server described below remains available.
 
@@ -198,7 +199,7 @@ security restriction; remaining contract migrations are separate work.
 
 ### Typed tool contracts
 
-All 21 local tools (and the two shared remote read tools) publish explicit
+All 21 local tools (and the seven shared remote read tools) publish explicit
 input/output schemas and validate arguments and results. See
 [implemented tool contracts](docs/tool-contracts.md) for field allowlists,
 limits, result variants, and compatibility changes. Existing names and response

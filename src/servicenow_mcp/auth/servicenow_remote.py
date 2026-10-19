@@ -70,7 +70,7 @@ class ServiceNowTokenVerifier(TokenVerifier):
 class ReadOnlyServiceNowClient(ServiceNowClient):
     def _request(self, method, path, params=None, json_body=None):
         if method != "GET" or not re.fullmatch(
-            r"/table/(incident|task|sc_task|problem|change_request)(/[0-9a-f]{32})?",
+            r"/table/(incident|task|sc_task|problem|change_request|kb_knowledge)(/[0-9a-f]{32})?",
             path,
         ):
             raise OperationError("PERMISSION_DENIED")

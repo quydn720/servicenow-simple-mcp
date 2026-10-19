@@ -4,3 +4,4 @@ recursive-include deploy Caddyfile.poc *.yml
 recursive-include servicenow *.js
 recursive-include tests *.py
 recursive-include src/servicenow_mcp/tools *.md
+recursive-include loadtest *.py

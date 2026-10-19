@@ -1,5 +1,7 @@
 # Agile planning
 
+Owner: Do Ngoc Quy.
+
 Agile tools live in `src/servicenow_mcp/tools/product_owner/agile_planning/`, with `stories.py`,
 `epics.py`, and `products.py` registered through the existing `product_owner`
 feature. No configuration migration is required.

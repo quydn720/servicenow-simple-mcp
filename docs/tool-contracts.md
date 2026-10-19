@@ -4,6 +4,8 @@ The authoritative definitions are in `src/servicenow_mcp/tools/contracts.py`.
 All 21 tools publish JSON Schema 2020-12 inputs and explicit outputs in discovery.
 Registration through `contract_tool` validates direct and MCP calls and validates
 structured results. Discovery needs no credentials or ServiceNow requests.
+Owner of all tool contracts: Do Ngoc Quy.
+
 These contracts also apply to the remote `get_record` and `list_records` tools
 and the remote service-desk read tools.
 

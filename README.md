@@ -249,6 +249,12 @@ Tool names never carry versions. Each tool publishes its contract version in
 contracts under the same names. See the
 [service-desk version history and migration notes](docs/service-desk-tools.md#migrating-from-100).
 
+## Ownership and releases
+
+Do Ngoc Quy owns the server and every tool. Releases are tagged `vX.Y.Z` on
+`main` and recorded in [CHANGELOG.md](CHANGELOG.md), which also describes the
+release process.
+
 ## Architecture and adding tools
 
 See [architecture and adding tools](docs/architecture.md).

@@ -24,7 +24,7 @@ remote = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "ruff>=0.15,<0.16", "jsonschema>=4.26,<5"]
+dev = ["pytest>=8,<10", "ruff>=0.17.1,<0.18", "jsonschema>=4.26,<5"]
 
 [project.scripts]
 servicenow-mcp = "servicenow_mcp.servers.stdio:main"

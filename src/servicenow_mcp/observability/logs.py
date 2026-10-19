@@ -18,6 +18,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+from servicenow_mcp.observability.metrics import record_request
+
 REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
 _SENSITIVE = r"access_token|refresh_token|id_token|client_secret|client_assertion|code_verifier|password|code|state|token|assertion"
@@ -131,6 +133,8 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, send_with_id)
         finally:
+            record_request(scope.get("method"), scope.get("path", ""), status["code"],
+                           time.perf_counter() - started)
             # The path never includes the query string, which can carry OAuth codes.
             logger.info(
                 "%s %s %s", scope.get("method"), scope.get("path"), status["code"],

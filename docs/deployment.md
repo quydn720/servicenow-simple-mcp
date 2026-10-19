@@ -37,13 +37,15 @@ TLS terminates at a reverse proxy or load balancer in front of the container.
 It must forward every path (`/mcp`, `/authorize`, `/token`, `/register`,
 `/consent`, `/auth/callback`, `/.well-known/*`) and preserve the public `Host`
 header, because the server accepts only the host in `POC_PUBLIC_URL` plus the
-loopback names `127.0.0.1:<port>` and `localhost:<port>`.
+loopback names `127.0.0.1:<port>` and `localhost:<port>`, and any internal
+names listed in `POC_INTERNAL_HOSTS`.
 
 - The image's own `HEALTHCHECK` calls `http://127.0.0.1:8000/healthz` inside the
   container.
-- A platform probe that connects to the container's IP must send
-  `Host: localhost:8000` (or the public host); otherwise host protection rejects
-  it. An exec probe running the same command as the `HEALTHCHECK` also works.
+- A platform probe or scraper that connects by an internal name must have that
+  name in `POC_INTERNAL_HOSTS` (for example `servicenow-mcp:8000`), or send
+  `Host: localhost:8000`; otherwise host protection rejects it. An exec probe
+  running the same command as the `HEALTHCHECK` also works.
 
 ## Logs
 
@@ -71,6 +73,46 @@ line with an `http` object (`method`, `path`, `status`, `duration_ms`).
   debug output includes full URLs and authorization codes.
 - The image sets `FASTMCP_CHECK_FOR_UPDATES=off` (no call to PyPI at start-up)
   and `FASTMCP_ENABLE_RICH_LOGGING=false`.
+
+## Monitoring
+
+`GET /metrics` serves Prometheus-format metrics, which most monitoring stacks
+can scrape. It is **off unless `POC_METRICS_TOKEN` is set** (it returns 404),
+and then requires `Authorization: Bearer <token>`. Store the token in the
+secret manager and give it only to the scraper.
+
+| Metric | Labels | Use |
+| --- | --- | --- |
+| `mcp_http_requests_total` | `route`, `method`, `status` (`2xx`…`5xx`) | Traffic and error rate |
+| `mcp_http_request_duration_seconds` | `route` (histogram) | Latency, p95 |
+| `mcp_tool_calls_total` | `tool`, `outcome`, `error_code` | Tool usage and failures |
+| `servicenow_responses_total` | `status` (`401`, `403`, `404`, `408`, `429`, `2xx`…`5xx`, `no_response`) | ServiceNow health |
+| `servicenow_identity_checks_total` | `result` (`valid`, `rejected`, `servicenow_unavailable`) | Sign-in health |
+| `mcp_process_start_time_seconds` | – | Restarts |
+
+Labels are always bounded: unknown paths become `route="other"`, and no
+metric carries users, search values, or record identifiers.
+
+Example scrape job (job name `servicenow-mcp`, which the alert rules expect):
+
+```yaml
+scrape_configs:
+  - job_name: servicenow-mcp
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/servicenow-mcp-token
+    static_configs:
+      - targets: ["servicenow-mcp:8000"]
+```
+
+The server accepts only known `Host` values, so add the scrape target's name to
+`POC_INTERNAL_HOSTS` (comma-separated `host:port`, no wildcards), for example
+`POC_INTERNAL_HOSTS=servicenow-mcp:8000`. Starting alert rules are in
+[`deploy/monitoring/alerts.yml`](../deploy/monitoring/alerts.yml): server
+down, 5xx rate, `/mcp` p95 latency, ServiceNow unavailable, sign-in rejections,
+tool error rate, and registration spikes. Tune their thresholds once real
+traffic is known.
 
 ## Constraints
 

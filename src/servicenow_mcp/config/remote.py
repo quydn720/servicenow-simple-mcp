@@ -1,6 +1,7 @@
 """Configuration for the isolated, read-only remote authorization POC."""
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
@@ -37,6 +38,9 @@ class RemoteSettings:
     # ServiceNow returns no refresh-token expiry, so this caps how long a client
     # sign-in lasts before the user must sign in again.
     session_lifetime_seconds: int = 86400
+    # OAuth scope requested from ServiceNow at sign-in. Pair it with REST API
+    # auth scopes on the instance so tokens can only call the APIs this needs.
+    servicenow_scope: str = ""
 
     def __post_init__(self):
         object.__setattr__(self, "instance", https_origin(self.instance, "POC_SERVICENOW_INSTANCE"))
@@ -61,6 +65,10 @@ class RemoteSettings:
             raise ValueError(
                 f"POC_SESSION_LIFETIME_SECONDS must be {SESSION_LIFETIME_MIN}-{SESSION_LIFETIME_MAX}"
             )
+        if self.servicenow_scope and not re.fullmatch(
+            r"[A-Za-z0-9_.:-]+( [A-Za-z0-9_.:-]+)*", self.servicenow_scope
+        ) or len(self.servicenow_scope) > 200:
+            raise ValueError("POC_SERVICENOW_SCOPE must be space-separated scope names")
         if (not self.identity_path.startswith("/api/") or ".." in self.identity_path
                 or any(c in self.identity_path for c in "?#\\")):
             raise ValueError("POC_IDENTITY_PATH must be an absolute ServiceNow API path")
@@ -91,4 +99,5 @@ class RemoteSettings:
             storage_dir=Path(os.getenv("POC_STORAGE_DIR", ".oauth-poc")),
             forward_pkce=pkce == "true",
             session_lifetime_seconds=int(lifetime),
+            servicenow_scope=" ".join(os.getenv("POC_SERVICENOW_SCOPE", "").split()),
         )

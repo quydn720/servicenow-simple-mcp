@@ -427,7 +427,8 @@ def test_encrypted_storage_survives_restart(settings):
     {"public_url": "https://mcp.example.com/mcp"}, {"allowed_redirects": ()},
     {"allowed_redirects": ("https://*.example.com/callback",)}, {"signing_key": "short"},
     {"identity_path": "https://evil.example/me"}, {"session_lifetime_seconds": 3599},
-    {"session_lifetime_seconds": 30 * 86400 + 1}])
+    {"session_lifetime_seconds": 30 * 86400 + 1}, {"servicenow_scope": "read,write"},
+    {"servicenow_scope": "x" * 201}, {"servicenow_scope": "scope<script>"}])
 def test_invalid_configuration(settings, changes):
     with pytest.raises(ValueError):
         replace(settings, **changes)
@@ -461,3 +462,33 @@ def test_session_lifetime_must_be_whole_seconds(settings, monkeypatch, value):
         monkeypatch.setenv(name, item)
     with pytest.raises(ValueError):
         RemoteSettings.from_env()
+
+
+@pytest.mark.parametrize("scope", ["", "mcp_read", "mcp_read useraccount"])
+def test_upstream_authorize_requests_only_the_configured_scope(settings, scope):
+    scoped = replace(settings, servicenow_scope=scope)
+    server = create_remote_server(scoped, storage=MemoryStore())
+    app = server.http_app(path="/mcp", stateless_http=True, json_response=True,
+        host_origin_protection=True, allowed_hosts=["mcp.example.com"],
+        allowed_origins=[scoped.public_url])
+    verifier = "v" * 64
+    with TestClient(app, base_url=scoped.public_url, follow_redirects=False) as client:
+        registered = client.post("/register", json={"client_name": "Scope test",
+            "redirect_uris": [CALLBACK], "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"], "token_endpoint_auth_method": "none"})
+        assert registered.status_code == 201, registered.text
+        client_id = registered.json()["client_id"]
+        auth = client.get("/authorize", params={"client_id": client_id, "redirect_uri": CALLBACK,
+            "response_type": "code", "state": "s", "code_challenge": challenge(verifier),
+            "code_challenge_method": "S256", "resource": "https://mcp.example.com/mcp"})
+        consent = client.get(auth.headers["location"])
+        form = {key: re.search(fr'name="{key}" value="([^"]+)"', consent.text)[1]
+                for key in ("txn_id", "csrf_token")}
+        approved = client.post("/consent", data={**form, "action": "approve"})
+    upstream = urlparse(approved.headers["location"])
+    assert upstream.path == "/oauth_auth.do"
+    params = parse_qs(upstream.query)
+    if scope:
+        assert params["scope"] == [scope]
+    else:
+        assert "scope" not in params

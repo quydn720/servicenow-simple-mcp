@@ -167,4 +167,6 @@ def test_main_installs_the_middleware_and_hides_the_banner(monkeypatch, tmp_path
     monkeypatch.setattr(remote_module, "create_remote_server", lambda s: FakeServer())
     remote_module.main()
     assert calls["logging"] is True and calls["show_banner"] is False
-    assert [m.cls for m in calls["middleware"]] == [RequestContextMiddleware]
+    from servicenow_mcp.servers.rate_limit import RateLimitMiddleware
+    # Request context is outermost, so refused requests still get an ID and a log line.
+    assert [m.cls for m in calls["middleware"]] == [RequestContextMiddleware, RateLimitMiddleware]

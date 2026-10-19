@@ -29,6 +29,7 @@ _HELP = {
     "servicenow_responses_total": ("counter", "ServiceNow API responses by status."),
     "servicenow_identity_checks_total": ("counter", "Sign-in token checks against ServiceNow by result."),
     "mcp_process_start_time_seconds": ("gauge", "Unix time the server process started."),
+    "mcp_rate_limited_total": ("counter", "Requests refused with 429 by route group."),
 }
 
 

@@ -318,6 +318,7 @@ the declared dependency constraints; use uv for the exact locked environment.
 | `servicenow-mcp-remote` | `python -m servicenow_mcp.servers.remote` |
 | `servicenow-mcp-dashboard` | `python -m servicenow_mcp.dashboard.web` |
 | `servicenow-oauth-setup` | `python -m servicenow_mcp.cli.oauth_setup` |
+| `servicenow-check-incident-states` | `python -m servicenow_mcp.cli.check_incident_states` |
 
 After this refactor, install the package and update MCP client launch commands
 that previously pointed to `app/server.py` or `app.*`. For example, use the

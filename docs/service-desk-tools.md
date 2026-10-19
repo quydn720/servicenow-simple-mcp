@@ -90,7 +90,10 @@ base-system state label, assignment-group sys_id, caller sys_id, `updated_after`
 `New`, `In Progress`, `On Hold`, `Resolved`, `Closed`, or `Canceled`, which the
 server translates to the stored choice codes 1, 2, 3, 6, 7, and 8. Encoded queries
 match stored codes, not labels. Instances with customized incident states must
-update `INCIDENT_STATE_CODES` in `search.py` before release. Search text is a literal
+update `INCIDENT_STATE_CODES` in `search.py` before release. To check, run
+`python -m servicenow_mcp.cli.check_incident_states` (or `servicenow-check-incident-states`)
+with an account that can read `sys_choice`; it exits 0 when every label matches,
+1 on a mismatch, and 2 when the choices cannot be read. Search text is a literal
 `short_description` substring. Date bounds are RFC 3339 UTC values applied to
 `sys_updated_on`; the start is inclusive and the end exclusive. `limit` is 1–100
 (default 10), and `offset` is 0–100000 (default 0). Results are ordered by update

@@ -11,25 +11,20 @@ from servicenow_mcp.tools.contracts import (
     Summary,
     PREPARE_RESULTS,
     contract_tool,
-    COMMON_FIELDS,
     INCIDENT_CHOICE_FIELDS,
     INCIDENT_SEARCH_FIELDS,
     INCIDENT_DETAIL_FIELDS,
     INCIDENT_DETAIL_EXCLUDED_CATEGORIES,
     IncidentRecord,
     IncidentSearchRecord,
-    Limit,
     Offset,
     PageLimit,
     SysId,
     JournalText,
     READ_RESULTS,
-    project_record,
-    project_records,
 )
 from servicenow_mcp.tools.descriptions import (
     prepare_description,
-    read_description,
     WRITE_LIFECYCLE,
 )
 from servicenow_mcp.tools.write_review import preview_write, return_write_errors
@@ -40,7 +35,6 @@ from .search import (
     IncidentNumber,
     UtcDateTime,
     PAGED_SEARCH_LIMITATIONS,
-    SEARCH_LIMITATIONS,
 )
 
 
@@ -103,63 +97,15 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
 
 def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
-    """Read-only incident tools; safe for stateless remote servers."""
+    """Read-only incident tools; safe for stateless remote servers.
 
-    @contract_tool(
-        mcp,
-        READ_RESULTS["incident", "list"],
-        description="Search incident records by a literal short_description substring, exact number, or both (AND). "
-        "Supply at least one non-null search_text or number. Supported/default fields: "
-        + ", ".join(COMMON_FIELDS)
-        + ". sys_id is raw, references are display names, other values are raw strings; unavailable fields may be omitted. "
-        + SEARCH_LIMITATIONS,
-        input_schema_extra={
-            "anyOf": [
-                {
-                    "required": ["search_text"],
-                    "properties": {"search_text": {"type": "string"}},
-                },
-                {"required": ["number"], "properties": {"number": {"type": "string"}}},
-            ]
-        },
-    )
-    def list_incidents(
-        search_text: SearchText | None = None,
-        number: IncidentNumber | None = None,
-        limit: Limit = 10,
-    ) -> dict:
-        if search_text is None and number is None:
-            raise ValueError("A title substring or incident number is required.")
-        clauses = []
-        if number is not None:
-            clauses.append(f"number={number}")
-        if search_text is not None:
-            clauses.append(f"short_descriptionLIKE{search_text}")
-        records = client_factory().list_records(
-            "incident", query="^".join(clauses), fields=list(COMMON_FIELDS), limit=limit
-        )
-        records = project_records(records, "incident", COMMON_FIELDS, limit)
-        return {"table": "incident", "count": len(records), "records": records}
-
-    @contract_tool(
-        mcp,
-        READ_RESULTS["incident", "get"],
-        description=read_description("incident", COMMON_FIELDS, collection=False)
-        + "Incident details exclude attachments and journal/activity history.",
-    )
-    def get_incident(sys_id: SysId) -> dict:
-        record = project_record(
-            client_factory().get_record("incident", sys_id, fields=list(COMMON_FIELDS)),
-            "incident",
-        )
-        if record["sys_id"].lower() != sys_id.lower():
-            raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        return {"table": "incident", "sys_id": sys_id, "record": record}
+    Tool names stay stable; contract versions are published in tool metadata.
+    """
 
     @contract_tool(
         mcp,
         READ_RESULTS["incident", "search"],
-        name="list_incidents_v2",
+        version="2.0.0",
         description="Search incidents using one or more of exact incident number, literal short-description substring, base-system state display label, assignment-group sys_id, caller sys_id, or sys_updated_on date bounds. Supplied filters are combined with AND. "
         "Results contain only number, short_description, state, priority, sys_updated_on, and a number-filtered ServiceNow URL; state and priority use display labels, references use display names, sys_updated_on is a raw UTC timestamp, and sys_id is omitted. "
         "Caller results remain subject to the configured ServiceNow identity's ACLs. "
@@ -174,7 +120,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             ]
         },
     )
-    def list_incidents_v2(
+    def list_incidents(
         search_text: SearchText | None = None,
         number: IncidentNumber | None = None,
         state: IncidentStateLabel | None = None,
@@ -251,57 +197,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @contract_tool(
         mcp,
         READ_RESULTS["incident", "detail"],
-        name="get_incident_v2",
-        description="Retrieve approved incident details by sys_id or exact incident number. sys_id is never returned. State and priority use display labels, references use display names, and timestamps stay raw UTC. Attachments and journal/activity history are excluded.",
-        input_schema_extra={
-            "anyOf": [
-                {"required": ["sys_id"]},
-                {"required": ["number"]},
-            ]
-        },
-    )
-    def get_incident_v2(
-        sys_id: SysId | None = None, number: IncidentNumber | None = None
-    ) -> dict:
-        if (sys_id is None) == (number is None):
-            raise ValueError("Supply exactly one of sys_id or number.")
-        client = client_factory()
-        if number is not None:
-            records = client.list_records(
-                "incident",
-                query=f"number={number}",
-                fields=list(INCIDENT_DETAIL_FIELDS),
-                limit=1,
-                display_fields=INCIDENT_CHOICE_FIELDS,
-            )
-            if not records:
-                raise OperationError("NOT_FOUND", outcome="failed")
-            if len(records) != 1:
-                raise OperationError("UPSTREAM_ERROR", outcome="failed")
-            source = records[0]
-            if not isinstance(source, dict):
-                raise OperationError("UPSTREAM_ERROR", outcome="failed")
-            if source.get("number") != number:
-                raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        else:
-            source = client.get_record(
-                "incident",
-                sys_id,
-                fields=["sys_id", *INCIDENT_DETAIL_FIELDS],
-                display_fields=INCIDENT_CHOICE_FIELDS,
-            )
-            actual_id = source.get("sys_id")
-            if not isinstance(actual_id, str) or actual_id.lower() != sys_id.lower():
-                raise OperationError("UPSTREAM_ERROR", outcome="failed")
-        return {
-            "table": "incident",
-            "record": _incident_detail_record(source, client.instance_url),
-        }
-
-    @contract_tool(
-        mcp,
-        READ_RESULTS["incident", "detail_v3"],
-        name="get_incident_v3",
+        version="3.0.0",
         description="Retrieve one incident by its approved sys_id or exact incident number. Returns only the approved incident detail fields and a number-filtered ServiceNow URL; state and priority use display labels, references use display names, and timestamps stay raw UTC. Work notes, comments, activity history, attachments, and non-allowlisted fields are excluded; omitted allowlisted fields are identified without inferring why they were absent. Access is enforced by the configured ServiceNow execution identity and ACLs. Read-only; no caller-selected fields or raw queries.",
         input_schema_extra={
             "oneOf": [
@@ -322,7 +218,7 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             ]
         },
     )
-    def get_incident_v3(
+    def get_incident(
         sys_id: SysId | None = None,
         number: IncidentNumber | None = None,
     ) -> dict:
@@ -373,9 +269,9 @@ def register_reads(mcp: FastMCP, client_factory: ClientFactory) -> None:
             }
         except Exception as error:
             code = error.code if isinstance(error, OperationError) else "INTERNAL_ERROR"
-            _audit_incident_detail_v3("error", code)
+            _audit_incident_detail("error", code)
             raise
-        _audit_incident_detail_v3("success")
+        _audit_incident_detail("success")
         return result
 
     @mcp.prompt(name="get_incident")
@@ -455,7 +351,7 @@ def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=
     """Write a structured, value-free audit event for incident searches."""
     event = {
         "event": "incident_search",
-        "tool": "list_incidents_v2",
+        "tool": "list_incidents",
         "tool_version": "2.0.0",
         "operation": "search",
         "identity": getattr(ctx, "client_id", None) or "unavailable",
@@ -468,11 +364,11 @@ def _audit_incident_search(ctx, filter_names, outcome, result_count, error_code=
     logger.info("Incident search audit", extra={"incident_search_audit": event})
 
 
-def _audit_incident_detail_v3(outcome, error_code=None):
+def _audit_incident_detail(outcome, error_code=None):
     """Write a value-free audit event for incident detail retrieval."""
     event = {
         "event": "incident_detail_retrieval",
-        "tool": "get_incident_v3",
+        "tool": "get_incident",
         "tool_version": "3.0.0",
         "operation": "read",
         "identity": "unavailable",

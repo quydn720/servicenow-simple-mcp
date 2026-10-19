@@ -29,8 +29,7 @@ AGILE_TOOLS = {
 
 
 SERVICE_DESK_TOOLS = {
-    'create_incident', 'create_task', 'get_incident', 'get_incident_v2', 'get_incident_v3',
-    'list_incidents', 'list_incidents_v2',
+    'create_incident', 'create_task', 'get_incident', 'list_incidents',
     'list_knowledge_articles', 'update_incident_journal', 'get_change_status',
     'confirm_pending_write',
 }

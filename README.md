@@ -286,7 +286,8 @@ PYTHON
 
 Install the complete development environment with
 `uv sync --locked --all-extras --group dev`, then run `uv run --locked pytest -q`
-and `uv run --locked ruff check .`. Authentication and tool tests use
+and `uv run --locked ruff check .`. CI runs the same checks plus a dependency
+vulnerability scan; see [dependencies](docs/dependencies.md). Authentication and tool tests use
 mocked HTTP/clients and do not create live ServiceNow records. The dashboard
 continues to control its local subprocess; MCP clients launch their own stdio
 server with `python -m servicenow_mcp.servers.stdio`.

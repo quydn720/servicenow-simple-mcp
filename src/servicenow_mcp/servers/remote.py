@@ -3,7 +3,7 @@
 import os
 from urllib.parse import urlparse
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from servicenow_mcp.config.environment import load_environment
@@ -16,6 +16,7 @@ from servicenow_mcp.observability.logs import RequestContextMiddleware, configur
 from servicenow_mcp.observability.metrics import metrics_endpoint
 from servicenow_mcp.servers.rate_limit import RateLimitMiddleware, limits_from_env
 from servicenow_mcp.config.remote import RemoteSettings
+from servicenow_mcp.config.secrets import split_keys
 from servicenow_mcp.tools import service_desk
 from servicenow_mcp.tools.common.records import register
 
@@ -26,7 +27,12 @@ def encrypted_storage(settings: RemoteSettings):
     directory.chmod(0o700)
     return FernetEncryptionWrapper(
         key_value=FileTreeStore(data_directory=directory),
-        fernet=Fernet(settings.encryption_key.encode()),
+        # Newest key encrypts; every listed key decrypts, so keys rotate
+        # without signing users out (docs/deployment.md#secrets).
+        fernet=MultiFernet([Fernet(key.encode()) for key in split_keys(settings.encryption_key)]),
+        # A grant no listed key can read is treated as absent: that user signs
+        # in again instead of hitting a server error.
+        raise_on_decryption_error=False,
     )
 
 

@@ -1,5 +1,6 @@
 """Run with python -m servicenow_mcp.servers.remote after configuring .env.remote."""
 
+import logging
 import os
 from urllib.parse import urlparse
 
@@ -85,6 +86,7 @@ def main():
     configure_logging()
     settings = RemoteSettings.from_env()
     host, port = bind_address()
+    logging.getLogger(__name__).info("Starting remote MCP server (environment=%s)", settings.environment)
     # Single worker, persistent encrypted state. TLS terminates at the proxy.
     os.umask(0o077)
     server = create_remote_server(settings)

@@ -31,6 +31,15 @@ variable; the image contains no secrets and `.dockerignore` keeps `.env*` and
 `.oauth-poc` out of the build. Use a secret manager rather than an env file in
 production.
 
+## Environment
+
+Set `POC_ENVIRONMENT` to `development`, `test` or `production`. Test and
+production refuse to start with insecure settings: a secret written in the
+`.env.remote` file, no `POC_SERVICENOW_SCOPE`, open dynamic registration, no
+revocation path, or (production) a tunnel host as the public URL. The rules
+and their reasons are in [ServiceNow access management](servicenow-access.md#environment-and-network-controls).
+Run `servicenow-mcp-check-remote` after each deployment to validate access.
+
 ## Secrets
 
 Four settings are secrets. Each can be set directly or, preferably, as a file

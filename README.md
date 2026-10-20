@@ -9,7 +9,8 @@ record reads and the service-desk read tools, but no write tools. See [the desig
 `python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
 server described below remains available. To run it as a container, see
 [deploying the remote server](docs/deployment.md); operations are covered in the
-[runbooks](docs/runbooks.md).
+[runbooks](docs/runbooks.md). Its ServiceNow access is managed as described in
+[ServiceNow access management](docs/servicenow-access.md).
 
 This project is a starter Model Context Protocol (MCP) server for a ServiceNow Personal Developer Instance (PDI). It exposes a small set of safe tools for reading and creating records while keeping the default scope narrow and secure.
 
@@ -328,6 +329,7 @@ the declared dependency constraints; use uv for the exact locked environment.
 | `servicenow-mcp-dashboard` | `python -m servicenow_mcp.dashboard.web` |
 | `servicenow-oauth-setup` | `python -m servicenow_mcp.cli.oauth_setup` |
 | `servicenow-check-incident-states` | `python -m servicenow_mcp.cli.check_incident_states` |
+| `servicenow-mcp-check-remote` | `python -m servicenow_mcp.cli.check_remote` |
 
 After this refactor, install the package and update MCP client launch commands
 that previously pointed to `app/server.py` or `app.*`. For example, use the

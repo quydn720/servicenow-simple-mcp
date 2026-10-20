@@ -1,5 +1,6 @@
 """Configuration for the isolated, read-only remote authorization POC."""
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -8,7 +9,13 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
-from servicenow_mcp.config.secrets import read_secret, split_keys
+from servicenow_mcp.config.secrets import SECRET_SETTINGS, read_secret, secret_source, split_keys
+
+logger = logging.getLogger(__name__)
+
+ENVIRONMENTS = ("development", "test", "production")
+ENFORCED_ENVIRONMENTS = ("test", "production")
+TUNNEL_HOSTS = (".ngrok-free.app", ".ngrok-free.dev", ".ngrok.io", ".ngrok.app", ".trycloudflare.com")
 
 # Claude's client ID metadata document (CIMD) URL.
 CLAUDE_CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata"
@@ -52,6 +59,10 @@ class RemoteSettings:
     # ServiceNow token revocation endpoint; empty skips the ServiceNow call
     # (the local grant is still deleted).
     revoke_path: str = "/oauth_revoke_token.do"
+    # Deployment environment; test and production enforce the policy below.
+    environment: str = "development"
+    # Where each secret came from (never the value); see secret_source().
+    secret_sources: dict = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self):
         object.__setattr__(self, "instance", https_origin(self.instance, "POC_SERVICENOW_INSTANCE"))
@@ -94,9 +105,37 @@ class RemoteSettings:
         if self.revoke_path and (not self.revoke_path.startswith("/") or ".." in self.revoke_path
                                  or any(c in self.revoke_path for c in "?#\\ ")):
             raise ValueError("POC_SERVICENOW_REVOKE_PATH must be an absolute ServiceNow path")
+        if self.environment not in ENVIRONMENTS:
+            raise ValueError("POC_ENVIRONMENT must be development, test or production")
         if (not self.identity_path.startswith("/api/") or ".." in self.identity_path
                 or any(c in self.identity_path for c in "?#\\")):
             raise ValueError("POC_IDENTITY_PATH must be an absolute ServiceNow API path")
+
+    def policy_violations(self) -> list[str]:
+        """Settings not acceptable outside development (see docs/servicenow-access.md)."""
+        problems = [
+            f"{name} is plain text in the .env.remote file; provide {name}_FILE or inject it from a secret store"
+            for name, source in sorted(self.secret_sources.items()) if source == "dotenv"
+        ]
+        if not self.servicenow_scope:
+            problems.append("POC_SERVICENOW_SCOPE must be set so ServiceNow tokens reach only the APIs the broker needs")
+        if self.allow_dynamic_registration:
+            problems.append("POC_ALLOW_DYNAMIC_REGISTRATION must be false")
+        if not self.revoke_path:
+            problems.append("POC_SERVICENOW_REVOKE_PATH must be set so /revoke ends ServiceNow grants")
+        host = (urlparse(self.public_url).hostname or "").lower()
+        if self.environment == "production" and host.endswith(TUNNEL_HOSTS):
+            problems.append("POC_PUBLIC_URL must be the production domain, not a tunnel host")
+        return problems
+
+    def enforce_environment_policy(self) -> None:
+        problems = self.policy_violations()
+        if not problems:
+            return
+        if self.environment in ENFORCED_ENVIRONMENTS:
+            raise ValueError(f"Settings not allowed in {self.environment}: " + "; ".join(problems))
+        for problem in problems:
+            logger.warning("Not allowed outside development: %s", problem)
 
     @classmethod
     def from_env(cls):
@@ -115,10 +154,11 @@ class RemoteSettings:
         approved = os.getenv("POC_APPROVED_CLIENTS")
         approved_clients = (CLAUDE_CLIENT_ID,) if approved is None else tuple(
             item.strip() for item in approved.split(",") if item.strip())
+        environment = os.getenv("POC_ENVIRONMENT", "development").strip().lower()
         pkce = os.getenv("POC_FORWARD_PKCE", "false").lower()
         if pkce not in ("true", "false"):
             raise ValueError("POC_FORWARD_PKCE must be true or false")
-        return cls(
+        settings = cls(
             instance=required("POC_SERVICENOW_INSTANCE"),
             public_url=required("POC_PUBLIC_URL"),
             client_id=required("POC_SERVICENOW_CLIENT_ID"),
@@ -134,4 +174,9 @@ class RemoteSettings:
             approved_clients=approved_clients,
             allow_dynamic_registration=registration == "true",
             revoke_path=os.getenv("POC_SERVICENOW_REVOKE_PATH", "/oauth_revoke_token.do").strip(),
+            environment=environment,
+            secret_sources={name: secret_source(name) for name in SECRET_SETTINGS
+                            if secret_source(name) != "absent"},
         )
+        settings.enforce_environment_policy()
+        return settings

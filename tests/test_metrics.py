@@ -31,7 +31,7 @@ def count(name, **labels):
 @pytest.fixture
 def settings(tmp_path):
     return RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app", "upstream-secret",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app", "upstream-secret",
         "s" * 64, Fernet.generate_key().decode(), ("http://127.0.0.1:8766/callback",),
         storage_dir=tmp_path / "tokens")
 
@@ -67,13 +67,13 @@ def test_routes_are_bounded(path, label):
 
 
 def test_metrics_endpoint_is_hidden_without_a_token(app, monkeypatch):
-    monkeypatch.delenv("POC_METRICS_TOKEN", raising=False)
+    monkeypatch.delenv("MCP_METRICS_TOKEN", raising=False)
     with TestClient(app, base_url="https://mcp.example.com") as client:
         assert client.get("/metrics").status_code == 404
 
 
 def test_metrics_endpoint_requires_the_configured_token(app, monkeypatch):
-    monkeypatch.setenv("POC_METRICS_TOKEN", "scrape-token-123")
+    monkeypatch.setenv("MCP_METRICS_TOKEN", "scrape-token-123")
     with TestClient(app, base_url="https://mcp.example.com") as client:
         before = count("mcp_http_requests_total", route="/healthz", method="GET", status="2xx")
         client.get("/healthz")

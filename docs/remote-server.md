@@ -7,7 +7,7 @@ with their own account permissions. Deploy one Streamable HTTP endpoint over
 HTTPS. Corporate SSO is used through ServiceNow's existing login integration;
 ServiceNow remains the authority for roles, record ACLs, field ACLs, and API access.
 
-This POC is a separate, read-only entry point: `python -m servicenow_mcp.servers.remote`.
+The remote server is a separate, read-only entry point: `python -m servicenow_mcp.servers.remote`.
 It exposes `list_records` and `get_record` for `incident`, `task`, `sc_task`,
 `problem`, and `change_request`, plus the read-only service-desk tools
 `list_incidents`, `get_incident`, `list_knowledge_articles`, and
@@ -19,7 +19,7 @@ identity assertions, impersonate users, or use the local integration account.
 The existing stdio entry point and write-preview tools are separate.
 
 If HR records are in `sn_hr_core_case` rather than `incident`, that table is not
-exposed by this POC. A reviewed table allowlist extension would be needed.
+exposed by the remote server. A reviewed table allowlist extension would be needed.
 UI visibility alone is not a security rule: verify that record and field ACLs
 actually enforce the intended restriction for REST requests.
 
@@ -73,7 +73,7 @@ is returned as a tool result. The corporate IdP's login session is not itself
 a ServiceNow API credential. Each client authorization obtains a separate grant;
 an existing SSO session can avoid another password prompt, but consent may still
 be required. Direct IdP authorization and identity-assertion/token-exchange grants
-are outside this POC.
+are not supported.
 
 ## ServiceNow setup
 
@@ -87,11 +87,11 @@ contains the resource script, not an automatically deployed ServiceNow applicati
 2. Record the client ID/secret in `.env.remote`. No user access or refresh token
    belongs in that file.
 3. Create a Scripted REST API with an authenticated GET resource `/me`. The
-   example expected path is `/api/x_mcp_poc/identity/me`; ServiceNow's generated
-   namespace may differ. Put the actual path in `POC_IDENTITY_PATH`.
+   example expected path is `/api/x_mcp/identity/me`; ServiceNow's generated
+   namespace may differ. Put the actual path in `MCP_IDENTITY_PATH`.
 4. Require authentication at both API and resource levels, and ensure the
    endpoint's REST access rules permit the test users. Do not require admin or
-   grant broad user-table read access. Use [poc_identity.js](../servicenow/poc_identity.js).
+   grant broad user-table read access. Use [identity_api.js](../servicenow/identity_api.js).
    It returns only the current caller's ID and username, checks their active flag,
    and rejects guests. Configure OAuth endpoint restrictions/scopes, if used on
    your instance, to allow both this endpoint and the intended Table API reads,
@@ -101,7 +101,7 @@ including `kb_knowledge`.
    ServiceNow adds the `result` envelope around `response.setBody`; the script
    intentionally supplies the inner object. Unauthenticated requests must fail.
 6. Verify end-user ACLs independently with direct Table API calls. Do not change
-   roles merely to make the POC work. API access may be more restrictive than UI
+   roles merely to make the connector work. API access may be more restrictive than UI
    access because of web-service and endpoint restrictions.
 
 ### Restrict what the broker's tokens can call
@@ -114,7 +114,7 @@ the broker needs: the Table API and the identity Scripted REST API.
 2. Create a **REST API Auth Scope** record for the Table API and one for the
    identity API, each with that auth scope. Exact module names vary by release;
    search the ServiceNow docs for "REST API auth scope".
-3. Set `POC_SERVICENOW_SCOPE=mcp_read` in `.env.remote` and restart the broker.
+3. Set `MCP_SERVICENOW_SCOPE=mcp_read` in `.env.remote` and restart the broker.
    It then requests exactly that scope at every sign-in; MCP clients cannot
    request ServiceNow scopes themselves.
 4. Verify: sign in again, and confirm the tools still work and that the same
@@ -126,15 +126,16 @@ Table API reads to the six tables it uses, and ServiceNow ACLs still apply.
 The broker is a confidential ServiceNow OAuth client and authenticates with its
 client secret. Upstream PKCE forwarding defaults to false: some ServiceNow
 releases treat a PKCE challenge as public-client mode and reject a client secret
-at token exchange. Enable `POC_FORWARD_PKCE=true` only after verifying that your
+at token exchange. Enable `MCP_FORWARD_PKCE=true` only after verifying that your
 instance supports PKCE together with confidential clients. Client-to-broker PKCE,
 consent and state validation remain required in either mode. The broker does not
 forward the MCP `resource` indicator to ServiceNow,
 whose OAuth endpoint is not assumed to implement MCP resource indicators.
-The POC requests no additional OAuth scopes. Instance-specific scope setups must
-be validated before use; the POC does not infer roles from OAuth scope strings.
+Without `MCP_SERVICENOW_SCOPE`, the server requests no OAuth scope. Instance-specific
+scope setups must be validated before use; the server never infers roles from OAuth
+scope strings.
 
-## Run the POC
+## Run the server
 
 Use Python 3.11+ and a dedicated environment with the remote extra:
 
@@ -144,8 +145,8 @@ python3 -m venv .venv-remote
 cp -n .env.remote.example .env.remote
 ```
 
-Generate independent keys, place the outputs in `POC_SIGNING_KEY` and
-`POC_ENCRYPTION_KEY`, and protect `.env.remote` with mode 600. Do not share outputs:
+Generate independent keys, place the outputs in `MCP_SIGNING_KEY` and
+`MCP_ENCRYPTION_KEY`, and protect `.env.remote` with mode 600. Do not share outputs:
 
 ```bash
 .venv-remote/bin/python -c 'import secrets; print(secrets.token_urlsafe(48))'
@@ -154,7 +155,7 @@ chmod 600 .env.remote
 ```
 
 Set the instance, public HTTPS origin (without `/mcp`), client credentials,
-identity path, and approved client callbacks. `POC_ALLOWED_REDIRECT_URIS` is a
+identity path, and approved client callbacks. `MCP_ALLOWED_REDIRECT_URIS` is a
 comma-separated list of exact HTTPS or loopback HTTP callback URLs. There is no
 default wildcard. Use the actual callback documented or used by each client.
 Environment variables override `.env.remote`. Run from the directory containing
@@ -167,12 +168,12 @@ remote runtime in `.venv`, use `uv sync --locked --no-dev --extra remote`.
 
 The process binds to `127.0.0.1:8000`. Terminate TLS using a reverse proxy on the
 same host. A minimal Caddy configuration is provided in
-[Caddyfile.poc](../deploy/Caddyfile.poc); replace its hostname with your configured
+[Caddyfile](../deploy/Caddyfile); replace its hostname with your configured
 public origin and provision DNS/network access. All OAuth paths and `/.well-known`
 paths must be proxied, not just `/mcp`. Preserve the public Host header.
 HTTPS applies to both the browser authorization routes and MCP endpoint.
 
-The POC uses stateless HTTP with JSON responses for these request/response tools.
+The server uses stateless HTTP with JSON responses for these request/response tools.
 It has no GET notification stream and no legacy `/sse` endpoint. OAuth grant
 state is persistent even though MCP transport sessions are stateless.
 
@@ -184,7 +185,7 @@ and record the approved settings here.
 | Lifetime | Set by | Default | Effect |
 | --- | --- | --- | --- |
 | ServiceNow access token | OAuth app **Access Token Lifespan** in ServiceNow | 1,800 s (30 min) | The broker refreshes it transparently. Every request is also checked against the identity endpoint, so revoking a user takes effect on their next request. |
-| Client sign-in (broker refresh token) | `POC_SESSION_LIFETIME_SECONDS` | 86,400 s (24 h) | How long Claude stays signed in before the user signs in again. Allowed range: 1 hour to 30 days. ServiceNow returns no refresh-token expiry, so this setting decides. |
+| Client sign-in (broker refresh token) | `MCP_SESSION_LIFETIME_SECONDS` | 86,400 s (24 h) | How long Claude stays signed in before the user signs in again. Allowed range: 1 hour to 30 days. ServiceNow returns no refresh-token expiry, so this setting decides. |
 | ServiceNow refresh token | OAuth app **Refresh Token Lifespan** in ServiceNow | 8,640,000 s (100 days) | An upper bound: if it expires first, the next refresh fails and the user signs in again. Set it at or above the sign-in lifetime. |
 
 The broker's `fallback_access_token_expiry_seconds=300` is used only if a
@@ -207,13 +208,13 @@ Keep these three URLs distinct:
 
 | Setting | Value |
 | --- | --- |
-| `POC_PUBLIC_URL` | `https://your-assigned-domain.ngrok-free.app` |
+| `MCP_PUBLIC_URL` | `https://your-assigned-domain.ngrok-free.app` |
 | ServiceNow OAuth application redirect | `https://your-assigned-domain.ngrok-free.app/auth/callback` |
-| `POC_ALLOWED_REDIRECT_URIS` | `https://claude.ai/api/mcp/auth_callback` |
+| `MCP_ALLOWED_REDIRECT_URIS` | `https://claude.ai/api/mcp/auth_callback` |
 
 Use the confidential ServiceNow client and authenticated identity resource from
-the setup above. Keep `POC_FORWARD_PKCE=false` unless upstream compatibility is
-verified. Give `POC_STORAGE_DIR` an absolute path to a directory with mode 700;
+the setup above. Keep `MCP_FORWARD_PKCE=false` unless upstream compatibility is
+verified. Give `MCP_STORAGE_DIR` an absolute path to a directory with mode 700;
 keep the independent signing/encryption keys and mode-600 environment file stable
 across restarts. Do not overwrite an existing configuration or use the local
 stdio server's user tokens as remote credentials.
@@ -283,7 +284,7 @@ the pilot; passing mock tests is not proof of live Claude or ServiceNow access.
 When finished, disconnect the connector and stop the tunnel and server. Revoke
 upstream grants explicitly when required; disconnecting Claude alone does not
 prove ServiceNow grant revocation. If the public hostname changes, update both
-`POC_PUBLIC_URL` and the ServiceNow callback, restart the broker, and re-add and
+`MCP_PUBLIC_URL` and the ServiceNow callback, restart the broker, and re-add and
 reauthorize the Claude connector. This single-worker tunnel setup is a pilot,
 not a production deployment.
 
@@ -295,8 +296,8 @@ Claude connects, or by dynamic client registration (DCR) at `/register`.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `POC_APPROVED_CLIENTS` | `https://claude.ai/oauth/mcp-oauth-client-metadata` | Comma-separated exact HTTPS metadata URLs. Any other URL is rejected before it is fetched. |
-| `POC_ALLOW_DYNAMIC_REGISTRATION` | `false` | `true` re-enables `/register` for any client. Use it only for a client that cannot use CIMD. |
+| `MCP_APPROVED_CLIENTS` | `https://claude.ai/oauth/mcp-oauth-client-metadata` | Comma-separated exact HTTPS metadata URLs. Any other URL is rejected before it is fetched. |
+| `MCP_ALLOW_DYNAMIC_REGISTRATION` | `false` | `true` re-enables `/register` for any client. Use it only for a client that cannot use CIMD. |
 
 - The approval check runs on every client lookup: `/authorize`, token exchange
   and refresh. Removing a client from the list ends its existing sign-ins at
@@ -304,7 +305,7 @@ Claude connects, or by dynamic client registration (DCR) at `/register`.
 - FastMCP would otherwise treat a request carrying the ServiceNow OAuth app's
   own client ID as an implicit client. That ID is not a secret, so the broker
   rejects it.
-- The client callback allow-list (`POC_ALLOWED_REDIRECT_URIS`) still applies
+- The client callback allow-list (`MCP_ALLOWED_REDIRECT_URIS`) still applies
   on top of this policy.
 
 ## Connect a client
@@ -333,7 +334,7 @@ Useful endpoints:
 | `/mcp` | Protected Streamable HTTP tools |
 | `/.well-known/oauth-protected-resource/mcp` | Resource metadata |
 | `/.well-known/oauth-authorization-server` | Broker metadata |
-| `/register` | Dynamic client registration; present only when `POC_ALLOW_DYNAMIC_REGISTRATION=true` |
+| `/register` | Dynamic client registration; present only when `MCP_ALLOW_DYNAMIC_REGISTRATION=true` |
 | `/authorize`, `/consent`, `/token` | Browser authorization and token exchange |
 | `/auth/callback` | ServiceNow → broker callback |
 
@@ -348,7 +349,7 @@ approved callbacks, concurrent user contexts, upstream refresh, revocation,
 encrypted storage and restart continuity, and propagated API access errors.
 They verify credential routing, not the correctness of your live ACL rules.
 
-Before accepting the live POC, use two non-admin users with different ACLs:
+Before accepting a deployment, use two non-admin users with different ACLs:
 
 | Check | Expected |
 | --- | --- |
@@ -367,7 +368,7 @@ by passing the mock tests. The Scripted REST resource needs instance deployment
 and verification, including namespace and authentication settings.
 
 Local state is encrypted with an explicit independent Fernet key under
-`POC_STORAGE_DIR` (default `.oauth-poc`, ignored by Git). Keep keys stable across
+`MCP_STORAGE_DIR` (default `.mcp-tokens`, ignored by Git). Keep keys stable across
 restarts and back up keys/store together in protected storage. Losing either
 requires reauthorization; rotating keys without migration also requires it.
 Run one worker: file storage and process-local refresh locks are not a distributed
@@ -390,7 +391,7 @@ matches the current public origin plus `/auth/callback`, the app is active, and
 the local client secret is the actual secret rather than a masked display value.
 For this broker, the ServiceNow application should be a confidential client.
 If instance OAuth logs report a client-secret failure in public-client mode,
-ensure `POC_FORWARD_PKCE=false` and restart the broker. Start a fresh client
+ensure `MCP_FORWARD_PKCE=false` and restart the broker. Start a fresh client
 authorization; old authorization codes cannot be reused. Never grant admin or
 change record ACLs to resolve a token-exchange error.
 

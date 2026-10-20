@@ -83,7 +83,7 @@ def test_exceptions_are_logged_redacted():
 @pytest.fixture
 def app(tmp_path):
     settings = RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app", "upstream-secret",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app", "upstream-secret",
         "s" * 64, Fernet.generate_key().decode(), ("http://127.0.0.1:8766/callback",),
         storage_dir=tmp_path / "tokens")
     server = create_remote_server(settings, storage=MemoryStore())
@@ -94,8 +94,8 @@ def app(tmp_path):
 
 
 def test_every_request_gets_an_id_and_one_safe_access_line(app, monkeypatch, capsys):
-    monkeypatch.setenv("POC_LOG_FORMAT", "json")
-    monkeypatch.setenv("POC_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("MCP_LOG_FORMAT", "json")
+    monkeypatch.setenv("MCP_LOG_LEVEL", "INFO")
     configure_logging()  # the same setup main() runs, writing to stdout
     with TestClient(app, base_url="https://mcp.example.com", follow_redirects=False) as client:
         response = client.get("/auth/callback",
@@ -123,8 +123,8 @@ def test_incoming_request_id_is_used_only_when_well_formed(app, incoming, echoed
 
 
 def test_configure_logging_routes_everything_through_one_redacting_handler(monkeypatch):
-    monkeypatch.setenv("POC_LOG_FORMAT", "json")
-    monkeypatch.setenv("POC_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("MCP_LOG_FORMAT", "json")
+    monkeypatch.setenv("MCP_LOG_LEVEL", "INFO")
     configure_logging()
     root = logging.getLogger()
     assert len(root.handlers) == 1
@@ -135,14 +135,14 @@ def test_configure_logging_routes_everything_through_one_redacting_handler(monke
 
 
 def test_debug_level_never_reaches_the_oauth_proxy_logger(monkeypatch):
-    monkeypatch.setenv("POC_LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("MCP_LOG_LEVEL", "DEBUG")
     configure_logging()
     root = logging.getLogger()
     assert root.level == logging.DEBUG
     assert logging.getLogger("fastmcp.server.auth").getEffectiveLevel() == logging.INFO
 
 
-@pytest.mark.parametrize("env", [{"POC_LOG_FORMAT": "xml"}, {"POC_LOG_LEVEL": "LOUD"}])
+@pytest.mark.parametrize("env", [{"MCP_LOG_FORMAT": "xml"}, {"MCP_LOG_LEVEL": "LOUD"}])
 def test_configure_logging_rejects_unknown_settings(monkeypatch, env):
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -158,7 +158,7 @@ def test_main_installs_the_middleware_and_hides_the_banner(monkeypatch, tmp_path
             calls.update(kwargs)
 
     settings = RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app", "upstream-secret",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app", "upstream-secret",
         "s" * 64, Fernet.generate_key().decode(), ("http://127.0.0.1:8766/callback",),
         storage_dir=tmp_path / "tokens")
     monkeypatch.setattr(remote_module, "load_environment", lambda remote: None)

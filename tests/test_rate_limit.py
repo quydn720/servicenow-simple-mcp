@@ -56,13 +56,13 @@ def test_limits_from_env(monkeypatch):
     for name in rate_limit.ENV.values():
         monkeypatch.delenv(name, raising=False)
     assert limits_from_env() == {"mcp": 120, "sign_in": 30, "oauth_api": 300}
-    monkeypatch.setenv("POC_RATE_LIMIT_SIGN_IN_PER_MINUTE", "5")
+    monkeypatch.setenv("MCP_RATE_LIMIT_SIGN_IN_PER_MINUTE", "5")
     assert limits_from_env()["sign_in"] == 5
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "ten", "100001"])
 def test_invalid_limits_are_rejected(monkeypatch, value):
-    monkeypatch.setenv("POC_RATE_LIMIT_MCP_PER_MINUTE", value)
+    monkeypatch.setenv("MCP_RATE_LIMIT_MCP_PER_MINUTE", value)
     with pytest.raises(ValueError):
         limits_from_env()
 
@@ -70,7 +70,7 @@ def test_invalid_limits_are_rejected(monkeypatch, value):
 @pytest.fixture
 def client(tmp_path):
     settings = RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app", "upstream-secret",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app", "upstream-secret",
         "s" * 64, Fernet.generate_key().decode(), ("http://127.0.0.1:8766/callback",),
         storage_dir=tmp_path / "tokens")
     server = create_remote_server(settings, storage=MemoryStore())

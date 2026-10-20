@@ -1,11 +1,11 @@
 # Easy MCP Server
 
-## Remote end-user authorization POC
+## Remote server (Claude connector)
 
 A separate read-only Streamable HTTP server supports per-user ServiceNow OAuth
 through corporate SSO, with approved MCP client callbacks and encrypted token
 storage. It can be added to Claude as a custom connector. It offers the common
-record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-auth-poc.md). Start it with
+record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-server.md). Start it with
 `python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
 server described below remains available. To run it as a container, see
 [deploying the remote server](docs/deployment.md); operations are covered in the
@@ -160,7 +160,7 @@ Save the configuration, fully quit Claude Desktop, and reopen it. Check that
 
 See the [official MCP desktop connection guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
 for configuration and troubleshooting details. This entry runs the local stdio
-server; remote OAuth setup is documented in [the remote guide](docs/remote-auth-poc.md).
+server; remote OAuth setup is documented in [the remote guide](docs/remote-server.md).
 
 ## Local status dashboard
 
@@ -335,4 +335,4 @@ After this refactor, install the package and update MCP client launch commands
 that previously pointed to `app/server.py` or `app.*`. For example, use the
 absolute path to `.venv/bin/servicenow-mcp` and set `MCP_ENV_FILE` in the client
 environment. Tool names, arguments, and ServiceNow environment variables are
-unchanged. The remote setup guide is in [docs/remote-auth-poc.md](docs/remote-auth-poc.md).
+unchanged. The remote setup guide is in [docs/remote-server.md](docs/remote-server.md).

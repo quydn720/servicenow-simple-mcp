@@ -1,6 +1,6 @@
 .env
 .env.remote
-.oauth-poc/
+.mcp-tokens/
 .venv/
 .venv-remote/
 __pycache__/

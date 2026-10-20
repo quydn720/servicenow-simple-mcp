@@ -26,8 +26,8 @@ from servicenow_mcp.config.remote import ENFORCED_ENVIRONMENTS, RemoteSettings
 
 MANUAL = (
     ("first sign-in", "Sign in through the connector: proves the client secret and the redirect URL."),
-    ("auth scope", "With POC_SERVICENOW_SCOPE set, a signed-in user's token is refused by an API outside the scope."),
-    ("user access", "Two non-admin users see only their own permitted records (docs/remote-auth-poc.md)."),
+    ("auth scope", "With MCP_SERVICENOW_SCOPE set, a signed-in user's token is refused by an API outside the scope."),
+    ("user access", "Two non-admin users see only their own permitted records (docs/remote-server.md)."),
 )
 
 
@@ -91,7 +91,7 @@ def broker_checks(settings: RemoteSettings, http=requests) -> list[Check]:
         metadata = http.get(settings.public_url + "/.well-known/oauth-authorization-server", timeout=10).json()
         unauthenticated = http.post(settings.public_url + "/mcp", json={}, timeout=10).status_code
     except (requests.RequestException, ValueError):
-        return [Check("broker", "reachable", "WARN", "server not reachable at POC_PUBLIC_URL; re-run once deployed")]
+        return [Check("broker", "reachable", "WARN", "server not reachable at MCP_PUBLIC_URL; re-run once deployed")]
     checks = []
     if "registration_endpoint" in metadata:
         checks.append(Check("broker", "registration", "FAIL" if settings.environment in ENFORCED_ENVIRONMENTS else "WARN",

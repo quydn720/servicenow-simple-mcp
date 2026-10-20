@@ -16,6 +16,15 @@ server releases. Owner: Do Ngoc Quy.
 
 ## [Unreleased]
 
+### Breaking
+- The remote server's settings now use the `MCP_` prefix (for example
+  `MCP_SERVICENOW_INSTANCE`, `MCP_PUBLIC_URL`, `MCP_SIGNING_KEY`); rename each
+  setting in `.env.remote` and in deployment configuration. `MCP_IDENTITY_PATH`
+  is now required, because the identity API's path differs per instance.
+- Renamed: `docs/remote-server.md`, `servicenow/identity_api.js`,
+  `deploy/Caddyfile`; the default token store is `.mcp-tokens`; the server
+  reports its name as `servicenow-remote`.
+
 ## [0.1.0] - 2026-10-19
 
 First tagged release. It covers all work merged to `main` up to PR #6.

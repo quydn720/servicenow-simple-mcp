@@ -45,6 +45,6 @@ def test_links_into_the_deployment_guide_resolve():
 
 def test_every_setting_named_in_the_runbooks_exists():
     code = " ".join(path.read_text() for path in (ROOT / "src").rglob("*.py"))
-    for setting in set(re.findall(r"\b(POC_[A-Z_]+|FORWARDED_ALLOW_IPS)\b", RUNBOOKS)):
+    for setting in set(re.findall(r"\b(MCP_[A-Z_]+|FORWARDED_ALLOW_IPS)\b", RUNBOOKS)):
         base = setting.removesuffix("_FILE")
         assert setting == "FORWARDED_ALLOW_IPS" or base in code or setting in code, setting

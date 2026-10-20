@@ -16,10 +16,10 @@ from dotenv import dotenv_values
 from servicenow_mcp.config.environment import environment_file
 
 SECRET_SETTINGS = (
-    "POC_SERVICENOW_CLIENT_SECRET",
-    "POC_SIGNING_KEY",
-    "POC_ENCRYPTION_KEY",
-    "POC_METRICS_TOKEN",
+    "MCP_SERVICENOW_CLIENT_SECRET",
+    "MCP_SIGNING_KEY",
+    "MCP_ENCRYPTION_KEY",
+    "MCP_METRICS_TOKEN",
 )
 
 

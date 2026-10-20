@@ -28,7 +28,7 @@ REMOTE_TOOLS = {
 @pytest.fixture
 def settings(tmp_path, request):
     return RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app",
         "upstream-secret", "s" * 64, Fernet.generate_key().decode(), (CALLBACK,),
         storage_dir=tmp_path / "tokens", forward_pkce=getattr(request, "param", True),
         # These tests exercise the OAuth flow through /register; client
@@ -53,7 +53,7 @@ class Upstream:
         self.requests.append(request)
         if request.url.path == "/oauth_revoke_token.do":
             params = parse_qs(request.content.decode())
-            assert params["client_id"] == ["poc-app"]
+            assert params["client_id"] == ["mcp-app"]
             assert params["client_secret"] == ["upstream-secret"]
             token = params["token"][0]
             self.revocations.append(token)
@@ -61,7 +61,7 @@ class Upstream:
             return httpx2.Response(200)
         if request.url.path == "/oauth_token.do":
             params = parse_qs(request.content.decode())
-            assert params["client_id"] == ["poc-app"]
+            assert params["client_id"] == ["mcp-app"]
             assert params["client_secret"] == ["upstream-secret"]
             if params["grant_type"] == ["authorization_code"]:
                 user = params["code"][0]
@@ -78,7 +78,7 @@ class Upstream:
             return httpx2.Response(200, json={"access_token": "sn-" + user,
                 "refresh_token": "refresh-" + user, "expires_in": 3600,
                 "refresh_expires_in": 86400, "token_type": "Bearer"})
-        assert request.url.path == "/api/x_mcp_poc/identity/me"
+        assert request.url.path == "/api/x_mcp/identity/me"
         user = request.headers["authorization"].removeprefix("Bearer sn-")
         if user not in ("A", "B") or user in self.revoked:
             return httpx2.Response(401)
@@ -435,7 +435,7 @@ def test_no_shared_fallback_or_write_access(settings, monkeypatch):
     monkeypatch.setattr(module, "get_access_token", lambda: None)
     with pytest.raises(RuntimeError):
         factory()
-    token = AccessToken(token="sn-A", client_id="poc-app", scopes=[], subject=USER_A,
+    token = AccessToken(token="sn-A", client_id="mcp-app", scopes=[], subject=USER_A,
                         claims={"provider": "servicenow", "servicenow_instance": settings.instance})
     monkeypatch.setattr(module, "get_access_token", lambda: token)
     client = factory()
@@ -475,16 +475,16 @@ def test_invalid_configuration(settings, changes):
 @pytest.mark.parametrize("value,expected", [(None, 86400), ("3600", 3600), ("2592000", 2592000)])
 def test_session_lifetime_sets_the_sign_in_length(settings, monkeypatch, value, expected):
     from servicenow_mcp.auth.servicenow_remote import create_auth
-    env = {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
-           "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
-           "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
-           "POC_ALLOWED_REDIRECT_URIS": CALLBACK}
+    env = {"MCP_SERVICENOW_INSTANCE": settings.instance, "MCP_PUBLIC_URL": settings.public_url,
+           "MCP_SERVICENOW_CLIENT_ID": "mcp-app", "MCP_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+           "MCP_SIGNING_KEY": settings.signing_key, "MCP_ENCRYPTION_KEY": settings.encryption_key,
+           "MCP_ALLOWED_REDIRECT_URIS": CALLBACK, "MCP_IDENTITY_PATH": "/api/x_mcp/identity/me"}
     for name, item in env.items():
         monkeypatch.setenv(name, item)
     if value is None:
-        monkeypatch.delenv("POC_SESSION_LIFETIME_SECONDS", raising=False)
+        monkeypatch.delenv("MCP_SESSION_LIFETIME_SECONDS", raising=False)
     else:
-        monkeypatch.setenv("POC_SESSION_LIFETIME_SECONDS", value)
+        monkeypatch.setenv("MCP_SESSION_LIFETIME_SECONDS", value)
     loaded = RemoteSettings.from_env()
     assert loaded.session_lifetime_seconds == expected
     auth = create_auth(loaded, MemoryStore())
@@ -493,10 +493,10 @@ def test_session_lifetime_sets_the_sign_in_length(settings, monkeypatch, value, 
 
 @pytest.mark.parametrize("value", ["1 day", "-5", "3600.5"])
 def test_session_lifetime_must_be_whole_seconds(settings, monkeypatch, value):
-    for name, item in {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
-                       "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
-                       "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
-                       "POC_ALLOWED_REDIRECT_URIS": CALLBACK, "POC_SESSION_LIFETIME_SECONDS": value}.items():
+    for name, item in {"MCP_SERVICENOW_INSTANCE": settings.instance, "MCP_PUBLIC_URL": settings.public_url,
+                       "MCP_SERVICENOW_CLIENT_ID": "mcp-app", "MCP_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+                       "MCP_SIGNING_KEY": settings.signing_key, "MCP_ENCRYPTION_KEY": settings.encryption_key,
+                       "MCP_ALLOWED_REDIRECT_URIS": CALLBACK, "MCP_IDENTITY_PATH": "/api/x_mcp/identity/me", "MCP_SESSION_LIFETIME_SECONDS": value}.items():
         monkeypatch.setenv(name, item)
     with pytest.raises(ValueError):
         RemoteSettings.from_env()

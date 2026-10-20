@@ -123,9 +123,9 @@ def record_identity_check(result: str) -> None:
 
 
 async def metrics_endpoint(request) -> Response:
-    """Serve metrics only to a caller with POC_METRICS_TOKEN; hidden otherwise."""
+    """Serve metrics only to a caller with MCP_METRICS_TOKEN; hidden otherwise."""
     try:
-        tokens = split_keys(read_secret("POC_METRICS_TOKEN", required=False))
+        tokens = split_keys(read_secret("MCP_METRICS_TOKEN", required=False))
     except ValueError:
         return Response(status_code=503)
     if not tokens:

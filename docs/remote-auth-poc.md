@@ -104,6 +104,25 @@ including `kb_knowledge`.
    roles merely to make the POC work. API access may be more restrictive than UI
    access because of web-service and endpoint restrictions.
 
+### Restrict what the broker's tokens can call
+
+Without a scope restriction, a user's token from the OAuth app can call any
+ServiceNow API that user may use. Before production, limit it to the two APIs
+the broker needs: the Table API and the identity Scripted REST API.
+
+1. On the OAuth app, add a dedicated auth scope, for example `mcp_read`.
+2. Create a **REST API Auth Scope** record for the Table API and one for the
+   identity API, each with that auth scope. Exact module names vary by release;
+   search the ServiceNow docs for "REST API auth scope".
+3. Set `POC_SERVICENOW_SCOPE=mcp_read` in `.env.remote` and restart the broker.
+   It then requests exactly that scope at every sign-in; MCP clients cannot
+   request ServiceNow scopes themselves.
+4. Verify: sign in again, and confirm the tools still work and that the same
+   token is refused by an API outside the scope.
+
+Auth scopes work per API, not per table. The broker's outbound client limits
+Table API reads to the six tables it uses, and ServiceNow ACLs still apply.
+
 The broker is a confidential ServiceNow OAuth client and authenticates with its
 client secret. Upstream PKCE forwarding defaults to false: some ServiceNow
 releases treat a PKCE challenge as public-client mode and reject a client secret

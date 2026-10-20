@@ -115,6 +115,9 @@ def create_auth(settings: RemoteSettings, storage, http_client=None):
         token_endpoint_auth_method="client_secret_post",
         forward_pkce=settings.forward_pkce,
         forward_resource=False,
+        # Clients get no ServiceNow scopes to choose from; the broker always
+        # requests the configured one so instance auth scopes can restrict it.
+        extra_authorize_params={"scope": settings.servicenow_scope} if settings.servicenow_scope else None,
         valid_scopes=[],
         require_authorization_consent=True,
         # ServiceNow returns expires_in, so its Access Token Lifespan applies;

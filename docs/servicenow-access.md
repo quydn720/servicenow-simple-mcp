@@ -15,7 +15,7 @@ that user's roles and ACLs, and the audit trail shows the real person.
 
 | Environment | Instance | OAuth client redirect URL | Status |
 | --- | --- | --- | --- |
-| Development | `dev436597` | `https://sublevel-awhile-passive.ngrok-free.dev/auth/callback` | Pilot |
+| Development | `dev.now.woven.tech` | `https://sublevel-awhile-passive.ngrok-free.dev/auth/callback` (server on a developer Mac behind a tunnel) | Being provisioned |
 | Test | _to be provisioned_ | `https://<test domain>/auth/callback` | Not provisioned |
 | Production | _to be provisioned_ | `https://<production domain>/auth/callback` | Not provisioned |
 
@@ -93,7 +93,8 @@ real user; the command lists them as manual steps.
 
 | Date | Environment | Result | Findings and action |
 | --- | --- | --- | --- |
-| 2026-10-20 | Development (`dev436597`) | **Fail** (1 failure, 4 warnings) | OAuth client recognized and identity API protected (pass). Warnings: client secret, signing and encryption keys are plain text in `.env.remote`, and no auth scope is set; all would block test and production. Failure: the running pilot predates revocation (PR #29) and still advertises open registration; redeploy once the medium PRs merge. |
+| 2026-10-20 | Demo (`dev436597`, before the move to DEV) | **Fail** (1 failure, 4 warnings) | OAuth client recognized and identity API protected (pass). Warnings: client secret, signing and encryption keys are plain text in `.env.remote`, and no auth scope is set; all would block test and production. Failure: the running pilot predates revocation (PR #29) and still advertises open registration; redeploy once the medium PRs merge. |
+| – | Development (`dev.now.woven.tech`) | Not run | Configured with secret files and `MCP_ENVIRONMENT=development`; waiting for the OAuth client and identity API. |
 | – | Test | Not run | Provision first. |
 
 ## Deprovisioning

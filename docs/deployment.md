@@ -83,6 +83,26 @@ Existing ServiceNow access tokens keep working until they expire.
 **Metrics token.** List both tokens (`<new>,<old>`), switch the scraper to the
 new one, then remove the old one. Scrapes never fail during the change.
 
+## Revocation and offboarding
+
+| Situation | What to do | Takes effect |
+| --- | --- | --- |
+| A client signs out | The client calls `/revoke` (RFC 7009) with its token. The broker revokes both ServiceNow tokens behind the grant and deletes the grant. | Immediately, for that grant |
+| A user leaves or is compromised | Deactivate the user in ServiceNow, or revoke their tokens under **System OAuth > Manage Tokens**. | On their next request: every request re-checks the token with ServiceNow |
+| Stop a client from connecting | Remove its URL from `POC_APPROVED_CLIENTS` and restart. | At its next sign-in or token refresh |
+| Sign everyone out (emergency) | Stop the server; rotate `POC_SIGNING_KEY`; delete the contents of `POC_STORAGE_DIR`; revoke the OAuth app's tokens in ServiceNow (or deactivate the app); start the server. | Immediately |
+
+- The ServiceNow revocation endpoint is `POC_SERVICENOW_REVOKE_PATH`, default
+  `/oauth_revoke_token.do`; confirm it on your instance. If the ServiceNow call
+  fails, the broker logs a warning and still deletes the local grant; revoke
+  in **Manage Tokens** to be certain. An empty value skips the ServiceNow call.
+- `mcp_revocations_total{result}` counts revocation requests. Watch it after
+  disconnecting the connector in Claude to confirm whether Claude calls
+  `/revoke`; if it does not, disconnecting leaves the ServiceNow grant until it
+  expires, and the offboarding steps above are the way to end it.
+- The MCP SDK's revocation endpoint requires a `client_secret` form field even
+  for public clients, which send it empty. A client that omits it gets `400`.
+
 ## Network and health checks
 
 TLS terminates at a reverse proxy or load balancer in front of the container.

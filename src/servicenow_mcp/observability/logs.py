@@ -1,7 +1,7 @@
 """Structured, redacted logs with a request ID on every line.
 
-Logs go to stdout as one JSON object per line (POC_LOG_FORMAT=json, the
-default) or plain text (POC_LOG_FORMAT=text), so any log platform can collect
+Logs go to stdout as one JSON object per line (MCP_LOG_FORMAT=json, the
+default) or plain text (MCP_LOG_FORMAT=text), so any log platform can collect
 them. Secrets are removed before anything is written: bearer tokens, OAuth
 codes and state, token and secret fields, and URL query strings.
 """
@@ -81,12 +81,12 @@ class RedactingTextFormatter(logging.Formatter):
 
 def configure_logging() -> None:
     """Send all logs, including FastMCP's and uvicorn's, through one redacting handler."""
-    level = os.getenv("POC_LOG_LEVEL", "INFO").strip().upper()
+    level = os.getenv("MCP_LOG_LEVEL", "INFO").strip().upper()
     if level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-        raise ValueError("POC_LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL")
-    log_format = os.getenv("POC_LOG_FORMAT", "json").strip().lower()
+        raise ValueError("MCP_LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL")
+    log_format = os.getenv("MCP_LOG_FORMAT", "json").strip().lower()
     if log_format not in ("json", "text"):
-        raise ValueError("POC_LOG_FORMAT must be json or text")
+        raise ValueError("MCP_LOG_FORMAT must be json or text")
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(

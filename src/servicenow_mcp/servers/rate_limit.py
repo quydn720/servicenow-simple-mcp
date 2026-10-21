@@ -28,9 +28,9 @@ GROUPS = {
 }
 DEFAULTS = {"mcp": 120, "sign_in": 30, "oauth_api": 300}
 ENV = {
-    "mcp": "POC_RATE_LIMIT_MCP_PER_MINUTE",
-    "sign_in": "POC_RATE_LIMIT_SIGN_IN_PER_MINUTE",
-    "oauth_api": "POC_RATE_LIMIT_OAUTH_API_PER_MINUTE",
+    "mcp": "MCP_RATE_LIMIT_MCP_PER_MINUTE",
+    "sign_in": "MCP_RATE_LIMIT_SIGN_IN_PER_MINUTE",
+    "oauth_api": "MCP_RATE_LIMIT_OAUTH_API_PER_MINUTE",
 }
 MAX_TRACKED_CALLERS = 10_000
 

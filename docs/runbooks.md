@@ -9,7 +9,7 @@ are described in [deployment](deployment.md).
 
 | Check | How |
 | --- | --- |
-| Is the process up? | `GET /healthz` returns `{"status":"ok"}`. From inside the network, send `Host: localhost:8000` or use a name in `POC_INTERNAL_HOSTS`. |
+| Is the process up? | `GET /healthz` returns `{"status":"ok"}`. From inside the network, send `Host: localhost:8000` or use a name in `MCP_INTERNAL_HOSTS`. |
 | Did it restart? | `mcp_process_start_time_seconds` changes on every start. |
 | What failed? | Logs are JSON lines on stdout. Filter by `level` (`ERROR`, `WARNING`); a request's lines share one `request_id`. |
 | Is ServiceNow healthy? | `servicenow_responses_total` by `status`, and `servicenow_identity_checks_total` by `result`. |
@@ -26,10 +26,10 @@ Users see: Claude reports it cannot reach the connector, or tool calls fail.
 
 1. **Process down or restarting.** Check the container's status and restart
    count, then the last log lines before exit.
-   - A `ValueError` naming a setting (for example `POC_ENCRYPTION_KEY`,
-     `POC_APPROVED_CLIENTS`, `POC_SIGNING_KEY_FILE`) is a configuration error:
+   - A `ValueError` naming a setting (for example `MCP_ENCRYPTION_KEY`,
+     `MCP_APPROVED_CLIENTS`, `MCP_SIGNING_KEY_FILE`) is a configuration error:
      fix that setting and start again.
-   - The token store needs `/data` (`POC_STORAGE_DIR`) writable by UID 10001,
+   - The token store needs `/data` (`MCP_STORAGE_DIR`) writable by UID 10001,
      mode 700, with free space.
 2. **Up but returning 5xx.** Find `ERROR` lines and their `request_id`. If they
    follow a deploy, roll back to the previous image.
@@ -40,7 +40,7 @@ Users see: Claude reports it cannot reach the connector, or tool calls fail.
 4. **Rate limiting or registration spike.** Check `mcp_rate_limited_total` by
    `group`. Sustained `sign_in` limiting from one address, or a spike on
    `/register`, suggests abuse: block the source at the proxy. If legitimate
-   users are limited, raise the matching `POC_RATE_LIMIT_*_PER_MINUTE` and make
+   users are limited, raise the matching `MCP_RATE_LIMIT_*_PER_MINUTE` and make
    sure `FORWARDED_ALLOW_IPS` is set, or all browsers share one allowance.
 5. **Tool errors.** `mcp_tool_calls_total{outcome="error"}` by `error_code`
    tells you which: `UPSTREAM_ERROR` or `TIMEOUT` point at ServiceNow;
@@ -61,9 +61,9 @@ request is refused. No action on the broker restarts ServiceNow.
 | Signal | Likely cause | Action |
 | --- | --- | --- |
 | `status="5xx"` or `"no_response"`; identity checks `servicenow_unavailable` | Instance down, upgrading, or unreachable | Check the instance and the network path. A developer instance hibernates when idle: wake it from the developer portal. Tell users; nothing to change on the broker. |
-| `status="429"` | ServiceNow rate limits for the users or integration | Check the instance's REST rate-limit rules; lower `POC_RATE_LIMIT_MCP_PER_MINUTE` if the connector drives it. |
-| Identity checks `rejected` rising, `status="401"` | OAuth app inactive or its secret changed; identity API moved; mass token revocation | Check the OAuth app is active and its secret matches `POC_SERVICENOW_CLIENT_SECRET`; check `POC_IDENTITY_PATH` returns the caller with a fresh token. |
-| `status="403"` rising | ACL, role or auth-scope change | Check recent ACL changes and, if `POC_SERVICENOW_SCOPE` is set, the REST API auth scopes for the Table API and identity API. |
+| `status="429"` | ServiceNow rate limits for the users or integration | Check the instance's REST rate-limit rules; lower `MCP_RATE_LIMIT_MCP_PER_MINUTE` if the connector drives it. |
+| Identity checks `rejected` rising, `status="401"` | OAuth app inactive or its secret changed; identity API moved; mass token revocation | Check the OAuth app is active and its secret matches `MCP_SERVICENOW_CLIENT_SECRET`; check `MCP_IDENTITY_PATH` returns the caller with a fresh token. |
+| `status="403"` rising | ACL, role or auth-scope change | Check recent ACL changes and, if `MCP_SERVICENOW_SCOPE` is set, the REST API auth scopes for the Table API and identity API. |
 
 After recovery, users whose refresh failed during the outage sign in again
 once; others continue without action.
@@ -73,8 +73,8 @@ once; others continue without action.
 Scheduled rotations follow [deployment: secrets](deployment.md#secrets). Record
 each rotation (date, secret, who) in your change log.
 
-1. **Encryption key (no sign-outs).** Set `POC_ENCRYPTION_KEY=<new>,<old>`,
-   restart, wait at least `POC_SESSION_LIFETIME_SECONDS` (default 24 h), then
+1. **Encryption key (no sign-outs).** Set `MCP_ENCRYPTION_KEY=<new>,<old>`,
+   restart, wait at least `MCP_SESSION_LIFETIME_SECONDS` (default 24 h), then
    set `<new>` alone and restart.
 2. **Metrics token.** Set `<new>,<old>`, switch the scraper, then remove `<old>`.
 3. **ServiceNow client secret.** Regenerate in the Application Registry, update
@@ -102,10 +102,10 @@ For a leaver, a compromised account, or a mistaken grant. Full detail is in
 2. **Confirm.** `servicenow_identity_checks_total{result="rejected"}` rises
    if they try again. Their past activity is in the audit events, found by
    their ServiceNow sys_id.
-3. **One client application.** Remove its URL from `POC_APPROVED_CLIENTS` and
+3. **One client application.** Remove its URL from `MCP_APPROVED_CLIENTS` and
    restart; its sign-ins end at their next token refresh.
-4. **Everyone (emergency).** Stop the server; rotate `POC_SIGNING_KEY`; delete
-   the contents of `POC_STORAGE_DIR`; revoke the OAuth app's tokens in
+4. **Everyone (emergency).** Stop the server; rotate `MCP_SIGNING_KEY`; delete
+   the contents of `MCP_STORAGE_DIR`; revoke the OAuth app's tokens in
    ServiceNow or deactivate the app; start the server. All users sign in again.
 
 ## Drills
@@ -117,7 +117,7 @@ recorded.
 | Drill | How to run it | Pass when |
 | --- | --- | --- |
 | Broker outage | Stop the container; restart it. | `ServiceNowMCPDown` fires within 2 minutes; the connector works again after restart. |
-| ServiceNow outage | Point `POC_IDENTITY_PATH` at a path that returns 404 (or block the instance at the network). | `ServiceNowSignInRejections` or `ServiceNowUnavailable` fires; tool calls are refused, not answered. |
+| ServiceNow outage | Point `MCP_IDENTITY_PATH` at a path that returns 404 (or block the instance at the network). | `ServiceNowSignInRejections` or `ServiceNowUnavailable` fires; tool calls are refused, not answered. |
 | Encryption key rotation | Run the encryption-key rotation in staging with a signed-in test user. | The user stays signed in through both restarts. |
 | User offboarding | Deactivate a test user in ServiceNow while they are signed in. | Their next tool call fails; another user is unaffected. |
 

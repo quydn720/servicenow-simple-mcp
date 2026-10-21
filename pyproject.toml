@@ -32,6 +32,7 @@ servicenow-mcp-remote = "servicenow_mcp.servers.remote:main"
 servicenow-mcp-dashboard = "servicenow_mcp.dashboard.web:main"
 servicenow-oauth-setup = "servicenow_mcp.cli.oauth_setup:main"
 servicenow-check-incident-states = "servicenow_mcp.cli.check_incident_states:main"
+servicenow-mcp-check-remote = "servicenow_mcp.cli.check_remote:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,6 +1,6 @@
 .env
 .env.remote
-.oauth-poc/
+.mcp-tokens/
 .venv/
 .venv-remote/
 __pycache__/
@@ -11,3 +11,4 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+Notes

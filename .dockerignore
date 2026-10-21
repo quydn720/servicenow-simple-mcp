@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 !.env.remote.example
-.oauth-poc
+.mcp-tokens
 .venv
 .venv-*
 dist

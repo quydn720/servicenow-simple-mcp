@@ -1,5 +1,6 @@
 """Run with python -m servicenow_mcp.servers.remote after configuring .env.remote."""
 
+import logging
 import os
 from urllib.parse import urlparse
 
@@ -39,7 +40,7 @@ def encrypted_storage(settings: RemoteSettings):
 def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=None):
     auth = create_auth(settings, storage if storage is not None else encrypted_storage(settings), http_client)
     server = ErrorReportingServer(
-        "servicenow-user-auth-poc", auth=auth,
+        "servicenow-remote", auth=auth,
         instructions="Read-only ServiceNow tools for records, incidents, published knowledge "
         "summaries, and change status. No create, update, or confirmation tools exist. "
         "ServiceNow enforces the connected user's ACLs.",
@@ -60,23 +61,23 @@ def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=
 
 
 def bind_address() -> tuple[str, int]:
-    """Listen address; containers set POC_BIND_HOST=0.0.0.0 behind their proxy."""
-    host = os.getenv("POC_BIND_HOST", "127.0.0.1").strip()
-    port = os.getenv("POC_BIND_PORT", "8000").strip()
+    """Listen address; containers set MCP_BIND_HOST=0.0.0.0 behind their proxy."""
+    host = os.getenv("MCP_BIND_HOST", "127.0.0.1").strip()
+    port = os.getenv("MCP_BIND_PORT", "8000").strip()
     if not host or any(c.isspace() for c in host):
-        raise ValueError("POC_BIND_HOST must be a host name or IP address")
+        raise ValueError("MCP_BIND_HOST must be a host name or IP address")
     if not port.isdigit() or not 1 <= int(port) <= 65535:
-        raise ValueError("POC_BIND_PORT must be a port number from 1 to 65535")
+        raise ValueError("MCP_BIND_PORT must be a port number from 1 to 65535")
     return host, int(port)
 
 
 def internal_hosts() -> list[str]:
     """Extra Host values for in-network callers such as scrapers and probes."""
-    hosts = [h.strip() for h in os.getenv("POC_INTERNAL_HOSTS", "").split(",") if h.strip()]
+    hosts = [h.strip() for h in os.getenv("MCP_INTERNAL_HOSTS", "").split(",") if h.strip()]
     for host in hosts:
         name, _, port = host.rpartition(":")
         if not name or not port.isdigit() or "*" in host or "/" in host or any(c.isspace() for c in host):
-            raise ValueError("POC_INTERNAL_HOSTS must be comma-separated host:port values without wildcards")
+            raise ValueError("MCP_INTERNAL_HOSTS must be comma-separated host:port values without wildcards")
     return hosts
 
 
@@ -85,6 +86,7 @@ def main():
     configure_logging()
     settings = RemoteSettings.from_env()
     host, port = bind_address()
+    logging.getLogger(__name__).info("Starting remote MCP server (environment=%s)", settings.environment)
     # Single worker, persistent encrypted state. TLS terminates at the proxy.
     os.umask(0o077)
     server = create_remote_server(settings)
@@ -102,7 +104,7 @@ def main():
         uvicorn_config={"access_log": False, "log_config": None},
         host_origin_protection=True,
         # Local health checks use the loopback names and in-network callers the
-        # names in POC_INTERNAL_HOSTS; everything else must use the public host.
+        # names in MCP_INTERNAL_HOSTS; everything else must use the public host.
         allowed_hosts=[urlparse(settings.public_url).netloc, f"127.0.0.1:{port}", f"localhost:{port}",
                        *internal_hosts()],
         allowed_origins=[settings.public_url],

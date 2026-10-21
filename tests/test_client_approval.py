@@ -19,7 +19,7 @@ UNAPPROVED = "https://evil.example/oauth/client.json"
 @pytest.fixture
 def settings(tmp_path):
     return RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app", "upstream-secret",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app", "upstream-secret",
         "s" * 64, Fernet.generate_key().decode(), ("https://claude.ai/api/mcp/auth_callback",),
         storage_dir=tmp_path / "tokens")
 
@@ -53,7 +53,7 @@ def test_unapproved_metadata_url_is_rejected_without_being_fetched(settings, mon
 @pytest.mark.parametrize("registration", [False, True])
 def test_the_servicenow_client_id_is_never_an_implicit_client(settings, monkeypatch, registration):
     scoped = replace(settings, allow_dynamic_registration=registration)
-    assert lookup(scoped, "poc-app", monkeypatch) == (None, [])
+    assert lookup(scoped, "mcp-app", monkeypatch) == (None, [])
 
 
 def test_registered_ids_work_only_when_registration_is_enabled(settings, monkeypatch):
@@ -86,7 +86,7 @@ def test_registration_returns_when_enabled(settings):
     assert metadata["registration_endpoint"].endswith("/register")
 
 
-@pytest.mark.parametrize("client_id", [UNAPPROVED, "poc-app", "unknown-dcr-id"])
+@pytest.mark.parametrize("client_id", [UNAPPROVED, "mcp-app", "unknown-dcr-id"])
 def test_authorize_refuses_unapproved_clients(settings, client_id):
     with http_client(settings) as client:
         response = client.get("/authorize", params={
@@ -113,20 +113,20 @@ def test_registration_alone_is_a_valid_policy(settings):
 
 
 def test_policy_from_environment(settings, monkeypatch):
-    base = {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
-            "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
-            "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
-            "POC_ALLOWED_REDIRECT_URIS": "https://claude.ai/api/mcp/auth_callback"}
+    base = {"MCP_SERVICENOW_INSTANCE": settings.instance, "MCP_PUBLIC_URL": settings.public_url,
+            "MCP_SERVICENOW_CLIENT_ID": "mcp-app", "MCP_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+            "MCP_SIGNING_KEY": settings.signing_key, "MCP_ENCRYPTION_KEY": settings.encryption_key,
+            "MCP_ALLOWED_REDIRECT_URIS": "https://claude.ai/api/mcp/auth_callback", "MCP_IDENTITY_PATH": "/api/x_mcp/identity/me"}
     for name, value in base.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.delenv("POC_APPROVED_CLIENTS", raising=False)
-    monkeypatch.delenv("POC_ALLOW_DYNAMIC_REGISTRATION", raising=False)
+    monkeypatch.delenv("MCP_APPROVED_CLIENTS", raising=False)
+    monkeypatch.delenv("MCP_ALLOW_DYNAMIC_REGISTRATION", raising=False)
     assert RemoteSettings.from_env().approved_clients == (CLAUDE_CLIENT_ID,)
-    monkeypatch.setenv("POC_APPROVED_CLIENTS", f"{CLAUDE_CLIENT_ID}, https://other.example/client.json")
-    monkeypatch.setenv("POC_ALLOW_DYNAMIC_REGISTRATION", "true")
+    monkeypatch.setenv("MCP_APPROVED_CLIENTS", f"{CLAUDE_CLIENT_ID}, https://other.example/client.json")
+    monkeypatch.setenv("MCP_ALLOW_DYNAMIC_REGISTRATION", "true")
     loaded = RemoteSettings.from_env()
     assert loaded.approved_clients == (CLAUDE_CLIENT_ID, "https://other.example/client.json")
     assert loaded.allow_dynamic_registration is True
-    monkeypatch.setenv("POC_ALLOW_DYNAMIC_REGISTRATION", "yes")
+    monkeypatch.setenv("MCP_ALLOW_DYNAMIC_REGISTRATION", "yes")
     with pytest.raises(ValueError):
         RemoteSettings.from_env()

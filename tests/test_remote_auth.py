@@ -45,11 +45,20 @@ class Upstream:
     """Mock ServiceNow's token and identity endpoints, with revocation support."""
     def __init__(self, expect_pkce=True):
         self.revoked = set()
+        self.revocations = []
         self.requests = []
         self.expect_pkce = expect_pkce
 
     def __call__(self, request):
         self.requests.append(request)
+        if request.url.path == "/oauth_revoke_token.do":
+            params = parse_qs(request.content.decode())
+            assert params["client_id"] == ["poc-app"]
+            assert params["client_secret"] == ["upstream-secret"]
+            token = params["token"][0]
+            self.revocations.append(token)
+            self.revoked.add(token.removeprefix("refresh-").removeprefix("sn-"))
+            return httpx2.Response(200)
         if request.url.path == "/oauth_token.do":
             params = parse_qs(request.content.decode())
             assert params["client_id"] == ["poc-app"]
@@ -523,6 +532,74 @@ def test_upstream_authorize_requests_only_the_configured_scope(settings, scope):
         assert "scope" not in params
 
 
+def revoke(client, token, form):
+    # The MCP SDK's revocation model requires client_secret; public clients send it empty.
+    return client.post("/revoke", data={"token": token, "client_id": form["client_id"], "client_secret": ""})
+
+
+@pytest.mark.parametrize("which", ["access_token", "refresh_token"])
+def test_revoke_ends_the_servicenow_grant_and_mcp_tokens_at_once(remote, which):
+    client, _, upstream = remote
+    tokens_a, form_a = login(client, "A")
+    tokens_b, _ = login(client, "B")
+    assert rpc(client, tokens_a["access_token"], "tools/list").status_code == 200
+
+    assert revoke(client, tokens_a[which], form_a).status_code == 200
+    # Both ServiceNow tokens behind the grant were revoked upstream...
+    assert set(upstream.revocations) == {"refresh-A", "sn-A"}
+    # ...and the MCP access token stops working now, not when it expires.
+    assert rpc(client, tokens_a["access_token"], "tools/list").status_code == 401
+    refreshed = client.post("/token", data={"grant_type": "refresh_token", "client_id": form_a["client_id"],
+                                             "refresh_token": tokens_a["refresh_token"],
+                                             "resource": "https://mcp.example.com/mcp"})
+    assert 400 <= refreshed.status_code < 500
+    # Another user's grant is untouched.
+    assert rpc(client, tokens_b["access_token"], "tools/list").status_code == 200
+
+
+def test_revoking_an_unknown_token_is_accepted_and_touches_nothing(remote):
+    client, _, upstream = remote
+    tokens, form = login(client, "A")
+    assert revoke(client, "not-a-real-token", form).status_code == 200
+    assert upstream.revocations == []
+    assert rpc(client, tokens["access_token"], "tools/list").status_code == 200
+
+
+def test_discovery_advertises_the_revocation_endpoint(remote):
+    client, _, _ = remote
+    metadata = client.get("/.well-known/oauth-authorization-server").json()
+    assert metadata["revocation_endpoint"] == "https://mcp.example.com/revoke"
+
+
+@pytest.mark.parametrize("path", ["oauth_revoke_token.do", "/a/../b", "/x?y", "/x y"])
+def test_invalid_revoke_path_is_rejected(settings, path):
+    with pytest.raises(ValueError):
+        replace(settings, revoke_path=path)
+
+
+def test_revoke_without_servicenow_call_still_removes_the_grant(settings, monkeypatch):
+    from fastmcp.server.auth.oauth_proxy import proxy
+    unchanged = replace(settings, revoke_path="")
+    upstream = Upstream(expect_pkce=unchanged.forward_pkce)
+    transport = httpx2.MockTransport(upstream)
+    original = proxy.AsyncOAuth2Client
+
+    def oauth_client(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result._client = httpx2.AsyncClient(transport=transport)
+        return result
+
+    monkeypatch.setattr(proxy, "AsyncOAuth2Client", oauth_client)
+    server = create_remote_server(unchanged, storage=MemoryStore(),
+                                  http_client=httpx2.AsyncClient(transport=transport))
+    app = server.http_app(path="/mcp", stateless_http=True, json_response=True,
+                          host_origin_protection=True, allowed_hosts=["mcp.example.com"],
+                          allowed_origins=[unchanged.public_url])
+    with TestClient(app, base_url=unchanged.public_url, follow_redirects=False) as client:
+        tokens, form = login(client, "A")
+        assert revoke(client, tokens["access_token"], form).status_code == 200
+        assert rpc(client, tokens["access_token"], "tools/list").status_code == 401
+    assert upstream.revocations == []
 def test_every_remote_tool_matches_its_released_snapshot(remote):
     import json
     from pathlib import Path

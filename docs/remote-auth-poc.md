@@ -376,9 +376,9 @@ umask 077. Keep OAuth query strings, secrets, codes and authorization headers ou
 of proxy/access/debug logs. The sample proxy does not enable access logging.
 
 Production follow-ups: reviewed shared storage with distributed refresh locking,
-secret management/key rotation, token redaction, audit correlation without
-sensitive payloads,
-revocation/logout behavior, instance-specific OAuth scopes, and client compatibility.
+audit correlation without sensitive payloads, and client compatibility. Secrets,
+key rotation, rate limits, client approval, log redaction, OAuth scopes and
+revocation are covered in [deployment](deployment.md) and the sections above.
 Write support additionally requires binding previews to the authenticated user,
 adapting the existing session-based confirmation mechanism for stateless HTTP,
 and enforcing user authorization again at confirmation time.

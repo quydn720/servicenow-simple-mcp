@@ -49,6 +49,9 @@ class RemoteSettings:
     approved_clients: tuple[str, ...] = (CLAUDE_CLIENT_ID,)
     # Open /register lets any client register; off unless explicitly needed.
     allow_dynamic_registration: bool = False
+    # ServiceNow token revocation endpoint; empty skips the ServiceNow call
+    # (the local grant is still deleted).
+    revoke_path: str = "/oauth_revoke_token.do"
 
     def __post_init__(self):
         object.__setattr__(self, "instance", https_origin(self.instance, "POC_SERVICENOW_INSTANCE"))
@@ -88,6 +91,9 @@ class RemoteSettings:
                 raise ValueError("POC_APPROVED_CLIENTS must be exact HTTPS client metadata URLs")
         if not self.approved_clients and not self.allow_dynamic_registration:
             raise ValueError("Approve at least one client or allow dynamic registration")
+        if self.revoke_path and (not self.revoke_path.startswith("/") or ".." in self.revoke_path
+                                 or any(c in self.revoke_path for c in "?#\\ ")):
+            raise ValueError("POC_SERVICENOW_REVOKE_PATH must be an absolute ServiceNow path")
         if (not self.identity_path.startswith("/api/") or ".." in self.identity_path
                 or any(c in self.identity_path for c in "?#\\")):
             raise ValueError("POC_IDENTITY_PATH must be an absolute ServiceNow API path")
@@ -127,4 +133,5 @@ class RemoteSettings:
             servicenow_scope=" ".join(os.getenv("POC_SERVICENOW_SCOPE", "").split()),
             approved_clients=approved_clients,
             allow_dynamic_registration=registration == "true",
+            revoke_path=os.getenv("POC_SERVICENOW_REVOKE_PATH", "/oauth_revoke_token.do").strip(),
         )

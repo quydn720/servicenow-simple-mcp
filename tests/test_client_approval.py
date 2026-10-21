@@ -9,7 +9,7 @@ from fastmcp.server.auth import OAuthProxy
 from key_value.aio.stores.memory import MemoryStore
 from starlette.testclient import TestClient
 
-from servicenow_mcp.auth.servicenow_remote import ApprovedClientsOAuthProxy, create_auth
+from servicenow_mcp.auth.servicenow_remote import ServiceNowOAuthProxy, create_auth
 from servicenow_mcp.config.remote import CLAUDE_CLIENT_ID, RemoteSettings
 from servicenow_mcp.servers.remote import create_remote_server
 
@@ -38,7 +38,7 @@ def lookup(settings, client_id, monkeypatch):
 
     monkeypatch.setattr(OAuthProxy, "get_client", parent_get_client)
     auth = create_auth(settings, MemoryStore())
-    assert isinstance(auth, ApprovedClientsOAuthProxy)
+    assert isinstance(auth, ServiceNowOAuthProxy)
     return asyncio.run(auth.get_client(client_id)), fetched
 
 

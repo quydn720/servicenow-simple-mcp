@@ -9,7 +9,7 @@ description = "Feature-based ServiceNow MCP server with local and remote authent
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastmcp==4.0.5",
+    "fastmcp==4.1.0",
     "pydantic>=2.12,<3",
     "requests>=2.32.0,<3",
     "python-dotenv>=1.0.1,<2",

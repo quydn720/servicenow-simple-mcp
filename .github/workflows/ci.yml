@@ -35,3 +35,31 @@ jobs:
         run: uv export --locked --all-extras --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
       - name: Scan for known vulnerabilities
         run: uvx pip-audit@2.9.0 -r requirements-audit.txt --require-hashes --disable-pip --progress-spinner off
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t servicenow-mcp-remote:ci .
+      - name: Start read-only, non-root, with throwaway keys
+        run: |
+          docker run -d --name mcp --read-only --tmpfs /tmp \
+            -v mcpdata:/data -p 127.0.0.1:8000:8000 \
+            -e POC_SERVICENOW_INSTANCE=https://instance.example.com \
+            -e POC_PUBLIC_URL=https://mcp.example.com \
+            -e POC_SERVICENOW_CLIENT_ID=ci-client \
+            -e POC_SERVICENOW_CLIENT_SECRET=ci-secret \
+            -e POC_SIGNING_KEY="$(openssl rand -base64 48)" \
+            -e POC_ENCRYPTION_KEY="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" \
+            -e POC_ALLOWED_REDIRECT_URIS=https://claude.ai/api/mcp/auth_callback \
+            servicenow-mcp-remote:ci
+      - name: Check health, user, and sign-in requirement
+        run: |
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/healthz && break; sleep 1; done
+          test "$(curl -s http://127.0.0.1:8000/healthz)" = '{"status":"ok"}'
+          test "$(docker exec mcp id -u)" = "10001"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: mcp.example.com' -X POST http://127.0.0.1:8000/mcp)" = "401"
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs mcp

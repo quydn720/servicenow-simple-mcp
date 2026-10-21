@@ -18,7 +18,7 @@ jobs:
       matrix:
         python-version: ["3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
@@ -29,7 +29,7 @@ jobs:
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Export locked runtime dependencies
         run: uv export --locked --all-extras --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
@@ -39,7 +39,7 @@ jobs:
   container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t servicenow-mcp-remote:ci .
       - name: Start read-only, non-root, with throwaway keys
@@ -67,7 +67,7 @@ jobs:
   monitoring-rules:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate Prometheus alert rules
         run: |
           docker run --rm -v "$PWD/deploy/monitoring:/rules:ro" \

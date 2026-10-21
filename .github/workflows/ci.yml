@@ -63,3 +63,12 @@ jobs:
       - name: Show container logs on failure
         if: failure()
         run: docker logs mcp
+
+  monitoring-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Prometheus alert rules
+        run: |
+          docker run --rm -v "$PWD/deploy/monitoring:/rules:ro" \
+            --entrypoint promtool prom/prometheus:v3.5.0 check rules /rules/alerts.yml

@@ -80,9 +80,11 @@ def test_main_binds_configured_address_and_allows_only_known_hosts(monkeypatch, 
     monkeypatch.setattr(remote_module, "create_remote_server", lambda s: FakeServer())
     monkeypatch.setenv("POC_BIND_HOST", "0.0.0.0")
     monkeypatch.setenv("POC_BIND_PORT", "9000")
+    monkeypatch.setenv("POC_INTERNAL_HOSTS", "servicenow-mcp:9000")
     remote_module.main()
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9000)
-    assert calls["allowed_hosts"] == ["mcp.example.com", "127.0.0.1:9000", "localhost:9000"]
+    assert calls["allowed_hosts"] == ["mcp.example.com", "127.0.0.1:9000", "localhost:9000",
+                                      "servicenow-mcp:9000"]
     assert calls["uvicorn_config"] == {"access_log": False, "log_config": None}
 
 
@@ -94,3 +96,19 @@ def test_image_runs_as_non_root_and_ships_no_secrets():
     ignored = (ROOT / ".dockerignore").read_text().splitlines()
     for path in (".env", ".env.*", ".oauth-poc", ".venv"):
         assert path in ignored
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("", []), ("servicenow-mcp:8000", ["servicenow-mcp:8000"]),
+    (" a.internal:8000 , b:9000 ", ["a.internal:8000", "b:9000"]),
+])
+def test_internal_hosts(monkeypatch, value, expected):
+    monkeypatch.setenv("POC_INTERNAL_HOSTS", value)
+    assert remote_module.internal_hosts() == expected
+
+
+@pytest.mark.parametrize("value", ["*:8000", "servicenow-mcp", "a b:80", "host:80/x", ":8000"])
+def test_invalid_internal_hosts(monkeypatch, value):
+    monkeypatch.setenv("POC_INTERNAL_HOSTS", value)
+    with pytest.raises(ValueError):
+        remote_module.internal_hosts()

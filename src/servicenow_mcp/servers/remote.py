@@ -13,6 +13,7 @@ from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 from servicenow_mcp.auth.servicenow_remote import create_auth, user_client_factory
 from servicenow_mcp.observability.logs import RequestContextMiddleware, configure_logging
+from servicenow_mcp.observability.metrics import metrics_endpoint
 from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.tools import service_desk
 from servicenow_mcp.tools.common.records import register
@@ -39,6 +40,8 @@ def create_remote_server(settings: RemoteSettings, *, storage=None, http_client=
     client_factory = user_client_factory(settings)
     register(server, client_factory)
 
+    server.custom_route("/metrics", methods=["GET"], include_in_schema=False)(metrics_endpoint)
+
     @server.custom_route("/healthz", methods=["GET"], include_in_schema=False)
     async def healthz(request):
         # Liveness only: no ServiceNow call, no storage access, no details.
@@ -60,6 +63,16 @@ def bind_address() -> tuple[str, int]:
     return host, int(port)
 
 
+def internal_hosts() -> list[str]:
+    """Extra Host values for in-network callers such as scrapers and probes."""
+    hosts = [h.strip() for h in os.getenv("POC_INTERNAL_HOSTS", "").split(",") if h.strip()]
+    for host in hosts:
+        name, _, port = host.rpartition(":")
+        if not name or not port.isdigit() or "*" in host or "/" in host or any(c.isspace() for c in host):
+            raise ValueError("POC_INTERNAL_HOSTS must be comma-separated host:port values without wildcards")
+    return hosts
+
+
 def main():
     load_environment(remote=True)
     configure_logging()
@@ -78,9 +91,10 @@ def main():
         # redacting root handler.
         uvicorn_config={"access_log": False, "log_config": None},
         host_origin_protection=True,
-        # Local health checks use the loopback names; everything else must
-        # arrive with the public host name.
-        allowed_hosts=[urlparse(settings.public_url).netloc, f"127.0.0.1:{port}", f"localhost:{port}"],
+        # Local health checks use the loopback names and in-network callers the
+        # names in POC_INTERNAL_HOSTS; everything else must use the public host.
+        allowed_hosts=[urlparse(settings.public_url).netloc, f"127.0.0.1:{port}", f"localhost:{port}",
+                       *internal_hosts()],
         allowed_origins=[settings.public_url],
     )
 

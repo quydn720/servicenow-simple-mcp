@@ -1,0 +1,64 @@
+# Prometheus alerting rules for the remote MCP server.
+# Assumes the scrape job is named "servicenow-mcp" (see docs/deployment.md).
+# Thresholds are starting points; tune them to real traffic after launch.
+groups:
+  - name: servicenow-mcp
+    rules:
+      - alert: ServiceNowMCPDown
+        expr: up{job="servicenow-mcp"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "MCP server is not answering metrics scrapes"
+          runbook: "docs/deployment.md#monitoring"
+
+      - alert: ServiceNowMCPServerErrors
+        expr: |
+          sum(rate(mcp_http_requests_total{job="servicenow-mcp",status="5xx"}[10m]))
+            / clamp_min(sum(rate(mcp_http_requests_total{job="servicenow-mcp"}[10m])), 1e-9) > 0.05
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "More than 5% of MCP server requests fail with 5xx"
+
+      - alert: ServiceNowMCPSlowToolCalls
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(mcp_http_request_duration_seconds_bucket{job="servicenow-mcp",route="/mcp"}[10m]))) > 5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 latency of /mcp is above 5 seconds"
+
+      - alert: ServiceNowUnavailable
+        expr: |
+          sum(rate(servicenow_identity_checks_total{job="servicenow-mcp",result="servicenow_unavailable"}[5m])) > 0
+            or sum(rate(servicenow_responses_total{job="servicenow-mcp",status=~"5xx|no_response"}[5m])) > 0.1
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "ServiceNow is failing or unreachable from the MCP server"
+
+      - alert: ServiceNowSignInRejections
+        expr: sum(rate(servicenow_identity_checks_total{job="servicenow-mcp",result="rejected"}[15m])) > 0.2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Many sign-in tokens are rejected by ServiceNow (OAuth app, identity API, or revocations)"
+
+      - alert: ServiceNowMCPToolErrors
+        expr: |
+          sum(rate(mcp_tool_calls_total{job="servicenow-mcp",outcome="error",
+                   error_code!~"VALIDATION_ERROR|RAW_QUERY_PROHIBITED|NOT_FOUND|PERMISSION_DENIED"}[10m]))
+            / clamp_min(sum(rate(mcp_tool_calls_total{job="servicenow-mcp"}[10m])), 1e-9) > 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 10% of tool calls fail for reasons other than caller input or permissions"
+
+      - alert: ServiceNowMCPRegistrationSpike
+        expr: sum(rate(mcp_http_requests_total{job="servicenow-mcp",route="/register"}[5m])) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Unusual rate of client registrations; possible abuse"

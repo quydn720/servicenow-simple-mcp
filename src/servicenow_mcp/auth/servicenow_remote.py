@@ -10,6 +10,7 @@ from servicenow_mcp.config.local import Settings
 from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.client import ServiceNowClient
 from servicenow_mcp.errors import OperationError
+from servicenow_mcp.observability.metrics import record_identity_check
 
 
 class ServiceNowTokenVerifier(TokenVerifier):
@@ -25,6 +26,8 @@ class ServiceNowTokenVerifier(TokenVerifier):
         self.http_client = http_client
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        outcome = {"result": "rejected"}
+
         async def verify(client):
             response = await client.get(
                 self.settings.instance + self.settings.identity_path,
@@ -35,6 +38,8 @@ class ServiceNowTokenVerifier(TokenVerifier):
                 follow_redirects=False,
                 timeout=15,
             )
+            if response.status_code >= 500 or response.status_code == 429:
+                outcome["result"] = "servicenow_unavailable"
             if response.status_code != 200:
                 return None
             user = response.json().get("result")
@@ -60,11 +65,18 @@ class ServiceNowTokenVerifier(TokenVerifier):
 
         try:
             if self.http_client is not None:
-                return await verify(self.http_client)
-            async with httpx2.AsyncClient() as client:
-                return await verify(client)
-        except (httpx2.HTTPError, ValueError, TypeError, AttributeError):
+                verified = await verify(self.http_client)
+            else:
+                async with httpx2.AsyncClient() as client:
+                    verified = await verify(client)
+        except httpx2.HTTPError:
+            record_identity_check("servicenow_unavailable")
             return None
+        except (ValueError, TypeError, AttributeError):
+            record_identity_check("rejected")
+            return None
+        record_identity_check("valid" if verified is not None else outcome["result"])
+        return verified
 
 
 class ReadOnlyServiceNowClient(ServiceNowClient):

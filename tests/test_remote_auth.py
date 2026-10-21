@@ -518,3 +518,18 @@ def test_upstream_authorize_requests_only_the_configured_scope(settings, scope):
         assert params["scope"] == [scope]
     else:
         assert "scope" not in params
+
+
+def test_every_remote_tool_matches_its_released_snapshot(remote):
+    import json
+    from pathlib import Path
+    _, server, _ = remote
+    root = Path(__file__).resolve().parents[1] / "docs" / "tool-contracts"
+    tools = asyncio.run(server.list_tools())
+    assert tools
+    for tool in tools:
+        published = tool.to_mcp_tool()
+        folder = root / tool.name / tool.version
+        assert folder.is_dir(), f"{tool.name} {tool.version} has no snapshot; add one before release"
+        assert json.loads((folder / "input.schema.json").read_text()) == published.input_schema, tool.name
+        assert json.loads((folder / "output.schema.json").read_text()) == published.output_schema, tool.name

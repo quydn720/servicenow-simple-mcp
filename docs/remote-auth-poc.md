@@ -32,7 +32,7 @@ sequenceDiagram
     participant S as ServiceNow
     participant I as Corporate SSO IdP
     C->>B: Discover protected resource and authorization metadata
-    C->>B: Register client callback (DCR or CIMD)
+    C->>B: Identify by approved client metadata URL (CIMD), or DCR if enabled
     C->>B: Authorize with state, resource and PKCE S256
     B->>C: Browser consent for this MCP client
     B->>S: Redirect browser to oauth_auth.do
@@ -252,7 +252,9 @@ curl --include --silent --show-error "$PUBLIC_URL/mcp" \
 
 Discovery must return JSON, with `resource` exactly equal to the public `/mcp`
 URL and public HTTPS issuer/endpoint URLs. The authorization metadata must
-advertise S256 PKCE and dynamic registration. The unauthenticated MCP POST must
+advertise S256 PKCE and `client_id_metadata_document_supported: true`; it lists a
+`registration_endpoint` only when dynamic registration is enabled (see "Approved
+clients"). The unauthenticated MCP POST must
 return `401` with a `WWW-Authenticate` resource-metadata pointer. An HTML warning,
 localhost redirect, or host-validation error is not a successful preflight.
 Claude allows 10 seconds for discovery, registration, and token exchange, and
@@ -285,10 +287,30 @@ prove ServiceNow grant revocation. If the public hostname changes, update both
 reauthorize the Claude connector. This single-worker tunnel setup is a pilot,
 not a production deployment.
 
+## Approved clients
+
+Only approved MCP clients can sign in. A client identifies itself either by a
+client ID metadata document (CIMD), an HTTPS URL describing it, which is how
+Claude connects, or by dynamic client registration (DCR) at `/register`.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `POC_APPROVED_CLIENTS` | `https://claude.ai/oauth/mcp-oauth-client-metadata` | Comma-separated exact HTTPS metadata URLs. Any other URL is rejected before it is fetched. |
+| `POC_ALLOW_DYNAMIC_REGISTRATION` | `false` | `true` re-enables `/register` for any client. Use it only for a client that cannot use CIMD. |
+
+- The approval check runs on every client lookup: `/authorize`, token exchange
+  and refresh. Removing a client from the list ends its existing sign-ins at
+  their next refresh.
+- FastMCP would otherwise treat a request carrying the ServiceNow OAuth app's
+  own client ID as an implicit client. That ID is not a secret, so the broker
+  rejects it.
+- The client callback allow-list (`POC_ALLOWED_REDIRECT_URIS`) still applies
+  on top of this policy.
+
 ## Connect a client
 
-Choose a client supporting Streamable HTTP, OAuth authorization code with PKCE,
-and a registration mechanism exposed by this server (DCR or CIMD). Configure:
+Choose a client supporting Streamable HTTP and OAuth authorization code with
+PKCE, and approve it first (see "Approved clients"). Configure:
 
 ```text
 URL:       https://mcp.example.com/mcp
@@ -311,7 +333,7 @@ Useful endpoints:
 | `/mcp` | Protected Streamable HTTP tools |
 | `/.well-known/oauth-protected-resource/mcp` | Resource metadata |
 | `/.well-known/oauth-authorization-server` | Broker metadata |
-| `/register` | Dynamic client registration |
+| `/register` | Dynamic client registration; present only when `POC_ALLOW_DYNAMIC_REGISTRATION=true` |
 | `/authorize`, `/consent`, `/token` | Browser authorization and token exchange |
 | `/auth/callback` | ServiceNow → broker callback |
 
@@ -354,8 +376,8 @@ umask 077. Keep OAuth query strings, secrets, codes and authorization headers ou
 of proxy/access/debug logs. The sample proxy does not enable access logging.
 
 Production follow-ups: reviewed shared storage with distributed refresh locking,
-secret management/key rotation, registration/authorization rate limits, client
-approval policy, token redaction, audit correlation without sensitive payloads,
+secret management/key rotation, token redaction, audit correlation without
+sensitive payloads,
 revocation/logout behavior, instance-specific OAuth scopes, and client compatibility.
 Write support additionally requires binding previews to the authenticated user,
 adapting the existing session-based confirmation mechanism for stateless HTTP,

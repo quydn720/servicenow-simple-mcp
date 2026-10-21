@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
+# Claude's client ID metadata document (CIMD) URL.
+CLAUDE_CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata"
 SESSION_LIFETIME_MIN = 3600  # 1 hour
 SESSION_LIFETIME_MAX = 30 * 86400  # 30 days
 
@@ -41,6 +43,10 @@ class RemoteSettings:
     # OAuth scope requested from ServiceNow at sign-in. Pair it with REST API
     # auth scopes on the instance so tokens can only call the APIs this needs.
     servicenow_scope: str = ""
+    # MCP clients allowed to sign in, by their client ID metadata URL.
+    approved_clients: tuple[str, ...] = (CLAUDE_CLIENT_ID,)
+    # Open /register lets any client register; off unless explicitly needed.
+    allow_dynamic_registration: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "instance", https_origin(self.instance, "POC_SERVICENOW_INSTANCE"))
@@ -69,6 +75,13 @@ class RemoteSettings:
             r"[A-Za-z0-9_.:-]+( [A-Za-z0-9_.:-]+)*", self.servicenow_scope
         ) or len(self.servicenow_scope) > 200:
             raise ValueError("POC_SERVICENOW_SCOPE must be space-separated scope names")
+        for client in self.approved_clients:
+            parsed = urlparse(client)
+            if (parsed.scheme != "https" or not parsed.hostname or parsed.path in ("", "/")
+                    or parsed.query or parsed.fragment or "*" in client):
+                raise ValueError("POC_APPROVED_CLIENTS must be exact HTTPS client metadata URLs")
+        if not self.approved_clients and not self.allow_dynamic_registration:
+            raise ValueError("Approve at least one client or allow dynamic registration")
         if (not self.identity_path.startswith("/api/") or ".." in self.identity_path
                 or any(c in self.identity_path for c in "?#\\")):
             raise ValueError("POC_IDENTITY_PATH must be an absolute ServiceNow API path")
@@ -84,6 +97,12 @@ class RemoteSettings:
         lifetime = os.getenv("POC_SESSION_LIFETIME_SECONDS", "86400").strip()
         if not lifetime.isdigit():
             raise ValueError("POC_SESSION_LIFETIME_SECONDS must be a whole number of seconds")
+        registration = os.getenv("POC_ALLOW_DYNAMIC_REGISTRATION", "false").strip().lower()
+        if registration not in ("true", "false"):
+            raise ValueError("POC_ALLOW_DYNAMIC_REGISTRATION must be true or false")
+        approved = os.getenv("POC_APPROVED_CLIENTS")
+        approved_clients = (CLAUDE_CLIENT_ID,) if approved is None else tuple(
+            item.strip() for item in approved.split(",") if item.strip())
         pkce = os.getenv("POC_FORWARD_PKCE", "false").lower()
         if pkce not in ("true", "false"):
             raise ValueError("POC_FORWARD_PKCE must be true or false")
@@ -100,4 +119,6 @@ class RemoteSettings:
             forward_pkce=pkce == "true",
             session_lifetime_seconds=int(lifetime),
             servicenow_scope=" ".join(os.getenv("POC_SERVICENOW_SCOPE", "").split()),
+            approved_clients=approved_clients,
+            allow_dynamic_registration=registration == "true",
         )

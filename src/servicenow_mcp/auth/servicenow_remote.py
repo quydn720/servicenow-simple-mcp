@@ -1,5 +1,6 @@
 """ServiceNow upstream validation; never install this verifier standalone."""
 
+import logging
 import re
 
 import httpx2
@@ -11,6 +12,8 @@ from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.client import ServiceNowClient
 from servicenow_mcp.errors import OperationError
 from servicenow_mcp.observability.metrics import record_identity_check
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceNowTokenVerifier(TokenVerifier):
@@ -112,8 +115,41 @@ def user_client_factory(settings: RemoteSettings):
     return current_client
 
 
+class ApprovedClientsOAuthProxy(OAuthProxy):
+    """OAuth proxy that only serves approved MCP clients.
+
+    Clients identify themselves by a client ID metadata URL (Claude does) or,
+    only when enabled, by dynamic registration. Lookups run for /authorize,
+    /token and refresh, so removing a client from the list also ends its
+    existing sign-ins. Unapproved metadata URLs are never fetched.
+    """
+
+    def __init__(self, *, approved_clients, allow_dynamic_registration, **kwargs):
+        super().__init__(**kwargs)
+        self._approved_clients = frozenset(approved_clients)
+        self._allow_dynamic_registration = allow_dynamic_registration
+        if self.client_registration_options is not None:
+            self.client_registration_options.enabled = allow_dynamic_registration
+
+    async def get_client(self, client_id: str):
+        if self._cimd_manager is not None and self._cimd_manager.is_cimd_client_id(client_id):
+            if client_id not in self._approved_clients:
+                logger.warning("Rejected unapproved MCP client metadata URL")
+                return None
+            return await super().get_client(client_id)
+        if client_id == self._upstream_client_id:
+            # FastMCP would otherwise accept the ServiceNow app's own client ID
+            # as an implicit client; that ID is not secret.
+            return None
+        if not self._allow_dynamic_registration:
+            return None
+        return await super().get_client(client_id)
+
+
 def create_auth(settings: RemoteSettings, storage, http_client=None):
-    return OAuthProxy(
+    return ApprovedClientsOAuthProxy(
+        approved_clients=settings.approved_clients,
+        allow_dynamic_registration=settings.allow_dynamic_registration,
         upstream_authorization_endpoint=settings.instance + "/oauth_auth.do",
         upstream_token_endpoint=settings.instance + "/oauth_token.do",
         upstream_client_id=settings.client_id,

@@ -121,7 +121,8 @@ def local_app(servicenow_seconds):
     requests.Session.request = table_api
     settings = RemoteSettings(
         "https://instance.example.com", "https://mcp.example.com", "loadtest-app", "loadtest-secret",
-        "s" * 64, Fernet.generate_key().decode(), (CALLBACK,), forward_pkce=False)
+        "s" * 64, Fernet.generate_key().decode(), (CALLBACK,), forward_pkce=False,
+        allow_dynamic_registration=True)
     server = create_remote_server(settings, storage=MemoryStore(),
                                   http_client=httpx2.AsyncClient(transport=transport))
     return server.http_app(path="/mcp", stateless_http=True, json_response=True,

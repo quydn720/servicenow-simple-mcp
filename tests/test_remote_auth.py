@@ -31,6 +31,9 @@ def settings(tmp_path, request):
         "https://instance.example.com", "https://mcp.example.com", "poc-app",
         "upstream-secret", "s" * 64, Fernet.generate_key().decode(), (CALLBACK,),
         storage_dir=tmp_path / "tokens", forward_pkce=getattr(request, "param", True),
+        # These tests exercise the OAuth flow through /register; client
+        # approval policy has its own tests below.
+        allow_dynamic_registration=True,
     )
 
 

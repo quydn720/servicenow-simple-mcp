@@ -1,338 +1,264 @@
-# Easy MCP Server
+# ServiceNow MCP Server
 
-## Remote server (Claude connector)
+A Model Context Protocol (MCP) server that lets Claude and other MCP clients
+work with ServiceNow: search and read incidents, knowledge articles, change
+requests and agile work, and (in the local mode) create records after the user
+approves each change.
 
-A separate read-only Streamable HTTP server supports per-user ServiceNow OAuth
-through corporate SSO, with approved MCP client callbacks and encrypted token
-storage. It can be added to Claude as a custom connector. It offers the common
-record reads and the service-desk read tools, but no write tools. See [the design and setup guide](docs/remote-server.md). Start it with
-`python -m servicenow_mcp.servers.remote` after configuring `.env.remote`; the local stdio
-server described below remains available. To run it as a container, see
-[deploying the remote server](docs/deployment.md); operations are covered in the
-[runbooks](docs/runbooks.md). Its ServiceNow access is managed as described in
-[ServiceNow access management](docs/servicenow-access.md).
+It runs in one of two ways:
 
-This project is a starter Model Context Protocol (MCP) server for a ServiceNow Personal Developer Instance (PDI). It exposes a small set of safe tools for reading and creating records while keeping the default scope narrow and secure.
+| | **stdio** (local) | **remote** (HTTP) |
+| --- | --- | --- |
+| Runs | On the user's machine, launched by the MCP client | As a service, behind HTTPS |
+| Used from | Claude Desktop and other local MCP clients | Claude as a custom connector |
+| ServiceNow identity | One configured account (Basic or OAuth) | Each user signs in; their own roles and ACLs apply |
+| Tools | Reads and writes; every write needs an approved preview | Reads only |
+| Start with | [Start the server: stdio](#start-the-server-stdio) | [Start the server: remote](#start-the-server-remote) |
 
-## What this starter includes
+## Install
 
-- Read records from a ServiceNow table
-- List records with a limit (caller-supplied raw queries are blocked)
-- Create a task record
-- Basic or OAuth 2.0 authentication via environment variables
-- Configurable tools grouped by feature
-- Clear separation between MCP tool definitions and the ServiceNow API client
-
-## Recommended security posture
-
-- Use a dedicated ServiceNow integration user
-- Grant only minimum required roles
-- Keep credentials in environment variables
-- Only allow safe tables and read/write actions
-- Do not expose admin-only endpoints in the first version
-
-## Quick start
-
-Requires Python 3.11 or newer. Run setup and server commands from the directory
-containing your `.env`. For a client launched elsewhere, set `MCP_ENV_FILE` to
-its absolute path; remote startup uses `MCP_REMOTE_ENV_FILE` for `.env.remote`.
-Environment variables override values loaded from these files. Importing a
-server module does not load credentials or create a server.
-
-
-1. Create a virtual environment
-
-   ```bash
-   cd "/Users/quydo/My MCP"
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. Install dependencies
-
-   ```bash
-   pip install -e .
-   # Optional local dashboard:
-   pip install -e ".[dashboard]"
-   ```
-
-3. Configure credentials
-
-   Copy the example file and update the values:
-
-   ```bash
-   # Only for a new installation; preserve an existing .env.
-   cp -n .env.example .env
-   ```
-
-   Example OAuth values:
-
-   ```env
-   SERVICENOW_INSTANCE=yourinstance.service-now.com
-   SERVICENOW_OAUTH_CLIENT_ID=your-oauth-client-id
-   SERVICENOW_OAUTH_CLIENT_SECRET=your-oauth-client-secret
-   SERVICENOW_OAUTH_REFRESH_TOKEN=your-oauth-refresh-token
-   ```
-
-   In ServiceNow, open **System OAuth → Application Registry → New →
-   Create an OAuth API endpoint for external clients**. Set the redirect URL
-   below, then save the generated client ID and client secret in `.env`.
-   The setup command obtains the refresh token through an authorization-code
-   flow. Store the real values only in `.env`.
-
-   The redirect URL must be exactly:
-
-   ```text
-   http://localhost:8765/callback
-   ```
-
-   Run the automatic OAuth setup flow:
-
-   ```bash
-   python -m servicenow_mcp.cli.oauth_setup
-   ```
-
-   This opens ServiceNow in your browser, starts a one-time local callback
-   listener, exchanges the authorization code, and saves the refresh token to
-   `.env`. No copy/paste of the code is required. The listener binds only to
-   `127.0.0.1` and stops after the callback. Use `servicenow_mcp.cli.oauth_setup` for this
-   flow; do not run the older `servicenow_mcp.cli.legacy_oauth_callback` listener at the same time
-   because it uses the same port. The legacy listener is retained only for manual troubleshooting. Restart your MCP client/server after setup
-   so it loads the updated `.env`.
-
-4. Start the MCP server
-
-   ```bash
-   python -m servicenow_mcp.servers.stdio
-   ```
-
-## Claude Desktop setup
-
-Install the package into this project's virtual environment before configuring
-Claude Desktop. From the project root, use `uv sync --locked --no-dev`, or:
+Requires Python 3.11 or newer. [uv](https://docs.astral.sh/uv/) installs the
+exact locked dependencies; pip uses the declared version ranges.
 
 ```bash
-"/Users/quydo/My MCP/.venv/bin/python" -m pip install -e "/Users/quydo/My MCP"
+git clone https://github.com/quydn720/servicenow-simple-mcp.git servicenow-mcp
+cd servicenow-mcp
+uv sync --locked --no-dev                  # stdio
+uv sync --locked --no-dev --extra remote   # remote (adds its dependencies)
 ```
 
-In Claude Desktop, open **Settings → Developer → Edit Config**. The configuration
-file is `~/Library/Application Support/Claude/claude_desktop_config.json` on
-macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows. Add the
-following entry to `mcpServers`, preserving any other servers and settings:
+Without uv: `python3 -m venv .venv && .venv/bin/pip install -e ".[remote]"`
+(drop `[remote]` for stdio only). Commands below assume the virtual environment
+is active (`source .venv/bin/activate`) or are prefixed with `uv run`.
+
+## Start the server: stdio
+
+The stdio server runs on your machine and talks to ServiceNow as one
+configured account. Use a dedicated integration account with only the roles
+the tools need.
+
+### 1. Configure
+
+Run commands from the project folder, which holds `.env`:
+
+```bash
+cp -n .env.example .env   # only for a new installation; keeps an existing .env
+```
+
+`.env` holds the instance and credentials and is never committed:
+
+```env
+SERVICENOW_INSTANCE=https://yourinstance.service-now.com
+SERVICENOW_AUTH_TYPE=oauth
+SERVICENOW_OAUTH_CLIENT_ID=your-client-id
+SERVICENOW_OAUTH_CLIENT_SECRET=your-client-secret
+```
+
+For OAuth, create the client in ServiceNow under **System OAuth → Application
+Registry → New → Create an OAuth API endpoint for external clients**, with the
+redirect URL exactly `http://localhost:8765/callback`. Basic authentication and
+other options are in [authentication](docs/authentication.md).
+
+### 2. Sign in (OAuth)
+
+```bash
+servicenow-oauth-setup
+```
+
+This opens ServiceNow in your browser, receives the authorization code on a
+one-time listener bound to `127.0.0.1:8765`, and saves the refresh token to
+`.env`. Restart the MCP client afterwards so it loads the new token.
+
+### 3. Run
+
+```bash
+servicenow-mcp            # or: python -m servicenow_mcp.servers.stdio
+```
+
+MCP clients normally start it themselves, as below.
+
+### 4. Connect Claude Desktop
+
+Open **Settings → Developer → Edit Config** (the file is
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS and
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows), and add an entry to
+`mcpServers`, keeping any others:
 
 ```json
 {
   "mcpServers": {
-    "servicenow-pdi": {
-      "command": "/Users/quydo/My MCP/.venv/bin/python",
+    "servicenow": {
+      "command": "/path/to/servicenow-mcp/.venv/bin/python",
       "args": ["-m", "servicenow_mcp.servers.stdio"],
       "env": {
-        "MCP_ENV_FILE": "/Users/quydo/My MCP/.env"
+        "MCP_ENV_FILE": "/path/to/servicenow-mcp/.env"
       }
     }
   }
 }
 ```
 
-Replace the absolute paths with your project location. Paths containing spaces
-are ordinary JSON strings; do not add shell quotes inside the values. On
-Windows, use `.venv\\Scripts\\python.exe` and escape backslashes in JSON paths
-(for example, `C:\\Projects\\My MCP\\.env`). Keep credentials in the `.env` file
-described in the quick start. The explicit `MCP_ENV_FILE` path lets the server
-find that file when Claude Desktop launches from a different working directory.
+Replace `/path/to/servicenow-mcp` with the project folder's absolute path. Paths
+with spaces need no extra quoting inside JSON. On Windows, use
+`.venv\\Scripts\\python.exe` and double the backslashes (for example
+`C:\\Projects\\servicenow-mcp\\.env`). `MCP_ENV_FILE` lets the server find
+`.env` when Claude Desktop starts it from another folder.
 
-If upgrading from the old layout, replace the argument pointing to
-`app/server.py` with the two module arguments above. The `src/` layout requires
-installing the package; pointing directly at `src/servicenow_mcp/servers/stdio.py`
-does not replace that installation.
+Fully quit and reopen Claude Desktop, then check that `servicenow` connects
+under **Settings → Developer**. If it does not:
 
-Save the configuration, fully quit Claude Desktop, and reopen it. Check that
-`servicenow-pdi` connects in Developer settings. If it fails:
+- `No module named servicenow_mcp`: install the package with the same Python
+  as `command`.
+- Missing ServiceNow configuration when a tool runs: check `MCP_ENV_FILE` and
+  the values in `.env`.
+- Start-up errors: see `~/Library/Logs/Claude/mcp-server-servicenow.log` on
+  macOS, or `%APPDATA%\Claude\logs` on Windows.
 
-- `No module named servicenow_mcp`: install the package using the exact Python
-  interpreter configured in `command`.
-- A missing `app/server.py` error: update the stale launch arguments and restart
-  Claude Desktop.
-- Missing ServiceNow configuration when invoking a tool: check `MCP_ENV_FILE`
-  and the required values in `.env`.
-- For startup errors, inspect `~/Library/Logs/Claude/mcp-server-servicenow-pdi.log`
-  on macOS, or `%APPDATA%\Claude\logs` on Windows.
+More detail: the [MCP guide to connecting local servers](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
-See the [official MCP desktop connection guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
-for configuration and troubleshooting details. This entry runs the local stdio
-server; remote OAuth setup is documented in [the remote guide](docs/remote-server.md).
-
-## Local status dashboard
-
-Run the dashboard from the project root:
+### Optional: status dashboard
 
 ```bash
-cd "/Users/quydo/My MCP"
-. .venv/bin/activate
-python -m servicenow_mcp.dashboard.web
+uv sync --locked --no-dev --extra dashboard
+servicenow-mcp-dashboard
 ```
 
-Open http://127.0.0.1:5050 in your browser. Use the dashboard to start and
-stop the stdio MCP server. The dashboard is bound to localhost only.
+Open http://127.0.0.1:5050 to start and stop the stdio server. It listens on
+localhost only.
 
-## Example tools exposed
+## Start the server: remote
 
-- `list_records` — list records in a table
-- `get_record` — fetch one record by `sys_id`
-- `create_task` — create a task with safe required fields
+The remote server is a read-only Streamable HTTP server for the Claude
+connector. Each user signs in through ServiceNow (and its SSO), so ServiceNow
+applies their own permissions. It never holds a shared account.
 
-Returned records use display names for reference fields, such as
-`"assignment_group": "Service Desk"` and `"assigned_to": "Jane Doe"`.
-This applies to list, get, create, and update responses. The record's own
-`sys_id`, choice codes, and timestamps retain their raw values. `list_incidents`
-and `get_incident` are the exception: they return `state` and `priority` as display
-labels and omit `sys_id`. Queries and
-write payloads still use reference sys_ids.
+### 1. Set up ServiceNow (an administrator, once per environment)
 
-### Raw-query security change
+- An OAuth client in the Application Registry (confidential), with the
+  redirect URL `https://<public host>/auth/callback`.
+- The identity API from [`servicenow/identity_api.js`](servicenow/identity_api.js),
+  a Scripted REST API the server uses to check each user's token.
+- For test and production, an auth scope that limits tokens to the APIs the
+  server needs.
 
-`list_records`, `list_agile_stories`, `list_agile_epics`, and
-`list_agile_products` reject every supplied `query` string, including empty
-strings, with a `RAW_QUERY_PROHIBITED` tool error before creating a ServiceNow
-client. This applies to local tools and the remote `list_records` tool.
-The argument is retained for clear rejection of older client calls; omit it or
-pass `null` for unfiltered lists. Existing callers that supply queries must
-change their calls. The service-desk searches accept bounded structured search arguments and build
-queries internally. Generic filters and owner-approved exception execution
-are not implemented, so approval alone cannot enable raw queries. This is a
-security restriction; remaining contract migrations are separate work.
+Step-by-step instructions are in the [remote server guide](docs/remote-server.md)
+and [ServiceNow access management](docs/servicenow-access.md).
 
-### Typed tool contracts
+### 2. Configure
 
-All 20 local tools (and the six shared remote read tools) publish explicit
-input/output schemas and validate arguments and results. See
-[implemented tool contracts](docs/tool-contracts.md) for field allowlists,
-limits, result variants, and compatibility changes. Existing names and response
-envelopes are retained, but malformed IDs, undeclared fields, invalid priorities,
-oversized text, and limits outside 1–100 are now rejected.
-
-Tool execution failures return a structured standard error with MCP `isError: true`.
-See [error handling and recovery](docs/error-handling.md), especially the migration
-note for clients that previously received write failures as successful MCP calls.
-
-### Service-desk workflows
-
-See the [service-desk tool specifications](docs/service-desk-tools.md) for
-contracts, permissions, search limitations, and examples. Tools are organized
-in `tools/service_desk/incidents.py`, `knowledge.py`, and `changes.py`. Incident
-creation reuses the existing `create_incident`; journal updates prepare an append
-preview and require `confirm_pending_write` after explicit approval.
-
-## Authentication
-
-See [authentication](docs/authentication.md).
-
-## Feature groups
-
-```env
-MCP_ENABLED_FEATURES=common,service_desk,product_owner
+```bash
+cp -n .env.remote.example .env.remote
 ```
 
-| Group | Registered tools and prompts |
+Set at least `MCP_ENVIRONMENT`, `MCP_SERVICENOW_INSTANCE`, `MCP_PUBLIC_URL`,
+`MCP_SERVICENOW_CLIENT_ID`, `MCP_IDENTITY_PATH` and
+`MCP_ALLOWED_REDIRECT_URIS`. Give secrets as files rather than values, for
+example `MCP_SERVICENOW_CLIENT_SECRET_FILE`, `MCP_SIGNING_KEY_FILE` and
+`MCP_ENCRYPTION_KEY_FILE`; test and production refuse to start with a secret
+written in `.env.remote`. Every setting is described in `.env.remote.example`
+and [deployment](docs/deployment.md).
+
+### 3. Validate
+
+```bash
+servicenow-mcp-check-remote
+```
+
+It checks the settings for the environment, that ServiceNow recognizes the
+OAuth client, and that the identity API refuses anonymous calls, without
+signing anyone in.
+
+### 4. Run
+
+```bash
+servicenow-mcp-remote     # or: python -m servicenow_mcp.servers.remote
+```
+
+It listens on `127.0.0.1:8000`. Put HTTPS in front of it with a reverse proxy
+([`deploy/Caddyfile`](deploy/Caddyfile)) or, for development, a tunnel. It must
+be reachable from Anthropic's cloud, not only from your network. To run it as a
+container, see [deployment](docs/deployment.md).
+
+### 5. Connect Claude
+
+In Claude, open **Customize → Connectors → Add custom connector** (for an
+organization, an administrator adds it under **Organization settings →
+Connectors**) and enter `https://<public host>/mcp`. Each user then signs in to
+ServiceNow from Claude.
+
+Operating it: [runbooks](docs/runbooks.md), [performance](docs/performance.md).
+
+## Tools
+
+| Feature group | Tools |
 | --- | --- |
 | `common` | `list_records`, `get_record` |
-| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `create_incident`, `update_incident_journal`, `get_change_status`, `create_task`; `get_incident` prompt |
-| `product_owner` | Story and epic create/get/list/update tools; product get/list tools |
-| `developer` | Reserved for future catalog use cases; currently empty |
+| `service_desk` | `list_incidents`, `get_incident`, `list_knowledge_articles`, `get_change_status`, the `get_incident` prompt; stdio only: `create_incident`, `update_incident_journal`, `create_task` |
+| `product_owner` (stdio) | Agile story and epic create/get/list/update; product get/list |
+| `developer` | Reserved; currently empty |
 
-Omitting the setting enables the first three groups and preserves existing
-tool names and existing story arguments. Whitespace and duplicate names are accepted. Unknown groups
-or an explicitly empty list stop startup. Groups control MCP discovery; they do
-not change ServiceNow ACLs. The incident prompt references `get_record`, so enable
-`common` alongside `service_desk` when using that prompt.
+The stdio server enables groups with `MCP_ENABLED_FEATURES` (default
+`common,service_desk,product_owner`); groups control what clients see, not
+ServiceNow permissions. The remote server always offers the six read tools.
 
-Tool names never carry versions. Each tool publishes its contract version in
-`tools/list` as `_meta.fastmcp.version`; for example `list_incidents` is 2.0.0 and
-`get_incident` is 3.0.0. **Breaking change:** those two tools replaced their 1.0.0
-contracts under the same names. See the
-[service-desk version history and migration notes](docs/service-desk-tools.md#migrating-from-100).
+- **Writes need approval.** Create and update tools only prepare a preview; the
+  change happens after the user approves it and the client calls
+  `confirm_pending_write`. See [write review](docs/write-review.md).
+- **No raw queries.** Searches take structured arguments; a caller-supplied
+  ServiceNow query is rejected with `RAW_QUERY_PROHIBITED`.
+- **Typed contracts.** Every tool publishes input and output schemas and
+  validates both; errors are structured, with MCP `isError: true`. See
+  [tool contracts](docs/tool-contracts.md) and [error handling](docs/error-handling.md).
+- **Versions.** Each tool's contract version is in `tools/list` as
+  `_meta.fastmcp.version`; tool names never change. See the
+  [service-desk specifications](docs/service-desk-tools.md),
+  [common tools](docs/common-tools.md) and [agile planning](docs/agile-planning.md).
+- **Display values.** References are returned as display names (for example
+  `"assignment_group": "Service Desk"`); other fields keep raw values, except
+  that `list_incidents` and `get_incident` return `state` and `priority` labels
+  and omit `sys_id`.
+
+## Development
+
+```bash
+uv sync --locked --all-extras --group dev
+uv run --locked pytest -q
+uv run --locked ruff check .
+```
+
+Tests use mocked ServiceNow responses and never change a live instance. CI runs
+the same checks, a dependency vulnerability scan, a container build and an
+alert-rule check; see [dependencies](docs/dependencies.md).
+
+To add or change a tool, follow [architecture](docs/architecture.md) and the
+[MCP tool design standard](docs/mcp-tool-design-standard.md), including its
+specification template and review checklist.
+
+```text
+src/servicenow_mcp/
+├── auth/           # ServiceNow authentication, and the remote OAuth broker
+├── servers/        # stdio and remote entry points, rate limiting
+├── config/         # Settings, secrets, environment files
+├── client.py       # ServiceNow Table API client
+├── tools/          # Tools by feature group, contracts, write review
+├── observability/  # Logs and metrics (remote)
+├── dashboard/      # Optional local dashboard
+└── cli/            # Setup and validation commands
+```
+
+| Command | What it does |
+| --- | --- |
+| `servicenow-mcp` | Start the stdio server |
+| `servicenow-mcp-remote` | Start the remote server |
+| `servicenow-mcp-dashboard` | Start the local dashboard |
+| `servicenow-oauth-setup` | Obtain the stdio server's OAuth refresh token |
+| `servicenow-mcp-check-remote` | Validate a remote environment's ServiceNow access |
+| `servicenow-check-incident-states` | Check incident state labels against an instance |
+
+Each command is also available as `python -m servicenow_mcp.<module>`.
 
 ## Ownership and releases
 
 Do Ngoc Quy owns the server and every tool. Releases are tagged `vX.Y.Z` on
 `main` and recorded in [CHANGELOG.md](CHANGELOG.md), which also describes the
 release process.
-
-## Architecture and adding tools
-
-See [architecture and adding tools](docs/architecture.md).
-
-Tool authors and reviewers must follow the [MCP tool design standard](docs/mcp-tool-design-standard.md),
-including its contract template and review checklist. The standard documents
-target requirements and current compliance gaps; it does not change runtime behavior.
-
-## Agile planning
-
-See [agile planning](docs/agile-planning.md).
-
-## Required review before ServiceNow writes
-
-See [required review before servicenow writes](docs/write-review.md).
-
-## Read-only connection check
-
-Configure either Basic or OAuth using the [authentication guide](docs/authentication.md),
-then run the check from the project root using the virtual environment. This requests at most one incident ID and
-prints only a success message; it does not create or update records.
-
-```bash
-python - <<'PYTHON'
-from servicenow_mcp.config.environment import load_environment
-from servicenow_mcp.config.local import Settings
-from servicenow_mcp.client import ServiceNowClient
-
-load_environment()
-client = ServiceNowClient(Settings.from_env())
-client.list_records('incident', fields=['sys_id'], limit=1)
-print('Authentication and Table API read succeeded.')
-PYTHON
-```
-
-Install the complete development environment with
-`uv sync --locked --all-extras --group dev`, then run `uv run --locked pytest -q`
-and `uv run --locked ruff check .`. CI runs the same checks plus a dependency
-vulnerability scan; see [dependencies](docs/dependencies.md). Authentication and tool tests use
-mocked HTTP/clients and do not create live ServiceNow records. The dashboard
-continues to control its local subprocess; MCP clients launch their own stdio
-server with `python -m servicenow_mcp.servers.stdio`.
-
-## Package layout and commands
-
-```text
-src/servicenow_mcp/
-├── auth/       # ServiceNow authentication providers
-├── servers/    # Local stdio and remote HTTP server factories and entry points
-├── config/     # Local/remote settings and explicit environment-file loading
-├── client.py   # ServiceNow HTTP and Table API client
-├── tools/      # Feature registry, tool groups, and write previews
-├── dashboard/  # Optional Flask dashboard and packaged HTML templates
-└── cli/        # OAuth setup and legacy manual callback listener
-```
-
-The repository also contains `tests/`, `docs/`, `deploy/`, and `servicenow/`
-(the instance-side identity endpoint). Project dependencies and tooling live
-in `pyproject.toml`; `uv.lock` records exact resolved dependencies. Core runtime
-installs exclude Flask and development tools; remote and dashboard extras are
-optional. `uv sync --locked --no-dev` installs the locked core runtime;
-add `--extra remote` or `--extra dashboard` as needed. Pip installations use
-the declared dependency constraints; use uv for the exact locked environment.
-
-| Installed command | Python module alternative |
-| --- | --- |
-| `servicenow-mcp` | `python -m servicenow_mcp.servers.stdio` |
-| `servicenow-mcp-remote` | `python -m servicenow_mcp.servers.remote` |
-| `servicenow-mcp-dashboard` | `python -m servicenow_mcp.dashboard.web` |
-| `servicenow-oauth-setup` | `python -m servicenow_mcp.cli.oauth_setup` |
-| `servicenow-check-incident-states` | `python -m servicenow_mcp.cli.check_incident_states` |
-| `servicenow-mcp-check-remote` | `python -m servicenow_mcp.cli.check_remote` |
-
-After this refactor, install the package and update MCP client launch commands
-that previously pointed to `app/server.py` or `app.*`. For example, use the
-absolute path to `.venv/bin/servicenow-mcp` and set `MCP_ENV_FILE` in the client
-environment. Tool names, arguments, and ServiceNow environment variables are
-unchanged. The remote setup guide is in [docs/remote-server.md](docs/remote-server.md).

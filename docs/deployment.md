@@ -31,6 +31,58 @@ variable; the image contains no secrets and `.dockerignore` keeps `.env*` and
 `.oauth-poc` out of the build. Use a secret manager rather than an env file in
 production.
 
+## Secrets
+
+Four settings are secrets. Each can be set directly or, preferably, as a file
+mounted by your secret manager: set `<NAME>_FILE` to the file's path (for
+example `/run/secrets/signing_key`). Files keep secrets out of the process
+environment, which `docker inspect` and process listings expose. Setting both
+`<NAME>` and `<NAME>_FILE` is an error. Values are read at start-up, so a
+rotation takes effect on restart.
+
+| Secret | Setting | Generate with |
+| --- | --- | --- |
+| ServiceNow OAuth client secret | `POC_SERVICENOW_CLIENT_SECRET` | ServiceNow Application Registry |
+| Token-signing key | `POC_SIGNING_KEY` | `python -c 'import secrets; print(secrets.token_urlsafe(48))'` |
+| Token-encryption key(s) | `POC_ENCRYPTION_KEY` | `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'` |
+| Metrics token(s) | `POC_METRICS_TOKEN` | `python -c 'import secrets; print(secrets.token_urlsafe(32))'` |
+
+Example with Docker secrets:
+
+```bash
+docker run ... \
+  -e POC_SIGNING_KEY_FILE=/run/secrets/signing_key \
+  -e POC_ENCRYPTION_KEY_FILE=/run/secrets/encryption_key \
+  -e POC_SERVICENOW_CLIENT_SECRET_FILE=/run/secrets/servicenow_client_secret \
+  -v /secure/secrets:/run/secrets:ro servicenow-mcp-remote
+```
+
+### Rotation
+
+**Encryption key: no sign-outs.** The setting takes a comma-separated list,
+newest first. The first key encrypts; every listed key decrypts.
+
+1. Generate a key and set `POC_ENCRYPTION_KEY=<new>,<old>`. Restart.
+2. Grants are re-encrypted with the new key as users' tokens refresh. Wait at
+   least `POC_SESSION_LIFETIME_SECONDS` (default 24 hours).
+3. Set `POC_ENCRYPTION_KEY=<new>`. Restart.
+
+A grant that no listed key can read is treated as absent, so dropping the old
+key too early signs those users out rather than causing errors.
+
+**Signing key: signs everyone out.** FastMCP accepts a single signing key, so
+every issued Claude token becomes invalid. Schedule it, announce it, set the
+new key and restart; users reconnect the connector and sign in again. Rotate it
+immediately if it may have leaked.
+
+**ServiceNow client secret.** ServiceNow keeps one secret per OAuth app.
+Regenerate it in the Application Registry, update the secret, and restart the
+server straight away; until the restart, sign-ins and token refreshes fail.
+Existing ServiceNow access tokens keep working until they expire.
+
+**Metrics token.** List both tokens (`<new>,<old>`), switch the scraper to the
+new one, then remove the old one. Scrapes never fail during the change.
+
 ## Network and health checks
 
 TLS terminates at a reverse proxy or load balancer in front of the container.

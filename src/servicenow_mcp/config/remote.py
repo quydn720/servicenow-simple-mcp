@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
+from servicenow_mcp.config.secrets import read_secret, split_keys
+
 # Claude's client ID metadata document (CIMD) URL.
 CLAUDE_CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata"
 SESSION_LIFETIME_MIN = 3600  # 1 hour
@@ -55,10 +57,14 @@ class RemoteSettings:
             raise ValueError("POC OAuth client ID and secret are required")
         if len(self.signing_key) < 32:
             raise ValueError("POC_SIGNING_KEY must contain at least 32 random characters")
-        try:
-            Fernet(self.encryption_key.encode())
-        except (ValueError, TypeError):
-            raise ValueError("POC_ENCRYPTION_KEY must be a Fernet key") from None
+        keys = split_keys(self.encryption_key)
+        if not keys:
+            raise ValueError("POC_ENCRYPTION_KEY must hold at least one Fernet key")
+        for key in keys:
+            try:
+                Fernet(key.encode())
+            except (ValueError, TypeError):
+                raise ValueError("POC_ENCRYPTION_KEY must be Fernet keys, newest first, comma-separated") from None
         if not self.allowed_redirects:
             raise ValueError("POC_ALLOWED_REDIRECT_URIS must list approved client callbacks")
         for uri in self.allowed_redirects:
@@ -110,9 +116,9 @@ class RemoteSettings:
             instance=required("POC_SERVICENOW_INSTANCE"),
             public_url=required("POC_PUBLIC_URL"),
             client_id=required("POC_SERVICENOW_CLIENT_ID"),
-            client_secret=required("POC_SERVICENOW_CLIENT_SECRET"),
-            signing_key=required("POC_SIGNING_KEY"),
-            encryption_key=required("POC_ENCRYPTION_KEY"),
+            client_secret=read_secret("POC_SERVICENOW_CLIENT_SECRET"),
+            signing_key=read_secret("POC_SIGNING_KEY"),
+            encryption_key=read_secret("POC_ENCRYPTION_KEY"),
             allowed_redirects=tuple(uri.strip() for uri in required("POC_ALLOWED_REDIRECT_URIS").split(",") if uri.strip()),
             identity_path=os.getenv("POC_IDENTITY_PATH", "/api/x_mcp_poc/identity/me"),
             storage_dir=Path(os.getenv("POC_STORAGE_DIR", ".oauth-poc")),

@@ -7,12 +7,13 @@ classes, error codes), never request values, users, or record identifiers.
 from __future__ import annotations
 
 import hmac
-import os
 import threading
 import time
 from collections import defaultdict
 
 from starlette.responses import PlainTextResponse, Response
+
+from servicenow_mcp.config.secrets import read_secret, split_keys
 
 DURATION_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 KNOWN_ROUTES = frozenset({
@@ -118,11 +119,15 @@ def record_identity_check(result: str) -> None:
 
 async def metrics_endpoint(request) -> Response:
     """Serve metrics only to a caller with POC_METRICS_TOKEN; hidden otherwise."""
-    expected = os.getenv("POC_METRICS_TOKEN", "")
-    if not expected:
+    try:
+        tokens = split_keys(read_secret("POC_METRICS_TOKEN", required=False))
+    except ValueError:
+        return Response(status_code=503)
+    if not tokens:
         return Response(status_code=404)
-    supplied = request.headers.get("authorization", "")
-    if not hmac.compare_digest(supplied.encode(), f"Bearer {expected}".encode()):
+    supplied = request.headers.get("authorization", "").encode()
+    # Several tokens let the scraper switch to a new one without a gap.
+    if not any(hmac.compare_digest(supplied, f"Bearer {token}".encode()) for token in tokens):
         return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
     return PlainTextResponse(REGISTRY.render(), media_type="text/plain; version=0.0.4",
                              headers={"Cache-Control": "no-store"})

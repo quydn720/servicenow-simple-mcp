@@ -88,6 +88,7 @@ secret manager and give it only to the scraper.
 | `mcp_tool_calls_total` | `tool`, `outcome`, `error_code` | Tool usage and failures |
 | `servicenow_responses_total` | `status` (`401`, `403`, `404`, `408`, `429`, `2xx`…`5xx`, `no_response`) | ServiceNow health |
 | `servicenow_identity_checks_total` | `result` (`valid`, `rejected`, `servicenow_unavailable`) | Sign-in health |
+| `mcp_rate_limited_total` | `group` (`mcp`, `sign_in`, `oauth_api`) | Throttled requests |
 | `mcp_process_start_time_seconds` | – | Restarts |
 
 Labels are always bounded: unknown paths become `route="other"`, and no
@@ -111,8 +112,31 @@ The server accepts only known `Host` values, so add the scrape target's name to
 `POC_INTERNAL_HOSTS=servicenow-mcp:8000`. Starting alert rules are in
 [`deploy/monitoring/alerts.yml`](../deploy/monitoring/alerts.yml): server
 down, 5xx rate, `/mcp` p95 latency, ServiceNow unavailable, sign-in rejections,
-tool error rate, and registration spikes. Tune their thresholds once real
+tool error rate, registration spikes, and sustained rate limiting. Tune their thresholds once real
 traffic is known.
+
+## Rate limits
+
+Each caller has a per-minute allowance; a request over it gets `429` with
+`Retry-After` and is counted in `mcp_rate_limited_total`. Health, metrics and
+`/.well-known` discovery routes are never limited.
+
+| Routes | Keyed by | Setting | Default |
+| --- | --- | --- | --- |
+| `/mcp` | Hash of the caller's bearer token (one allowance per sign-in) | `POC_RATE_LIMIT_MCP_PER_MINUTE` | 120 |
+| `/authorize`, `/consent`, `/auth/callback` | Client IP (the user's browser) | `POC_RATE_LIMIT_SIGN_IN_PER_MINUTE` | 30 |
+| `/register`, `/token`, `/revoke` | Client IP | `POC_RATE_LIMIT_OAUTH_API_PER_MINUTE` | 300 |
+
+Claude's registration, token and `/mcp` calls come from Anthropic's servers, so
+many users share a few addresses: that is why `/mcp` is limited per sign-in and
+the OAuth API limit is high, an overall safety net rather than a per-user cap.
+
+Behind a load balancer, the client IP is the balancer's unless the server trusts
+its `X-Forwarded-For` header. Set uvicorn's `FORWARDED_ALLOW_IPS` to the
+balancer's addresses (comma-separated IPs or CIDR ranges); the default,
+`127.0.0.1`, suits a proxy or tunnel on the same host. Without it, all
+browsers share one sign-in allowance. Counters live in the process, which
+matches the single-replica constraint below.
 
 ## Constraints
 

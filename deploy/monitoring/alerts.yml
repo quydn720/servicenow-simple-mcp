@@ -62,3 +62,10 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Unusual rate of client registrations; possible abuse"
+
+      - alert: ServiceNowMCPRateLimiting
+        expr: sum by (group) (rate(mcp_rate_limited_total{job="servicenow-mcp"}[10m])) > 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Requests are being refused with 429; check for abuse or limits set too low"

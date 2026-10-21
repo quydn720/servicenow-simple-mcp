@@ -14,6 +14,7 @@ from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 from servicenow_mcp.auth.servicenow_remote import create_auth, user_client_factory
 from servicenow_mcp.observability.logs import RequestContextMiddleware, configure_logging
 from servicenow_mcp.observability.metrics import metrics_endpoint
+from servicenow_mcp.servers.rate_limit import RateLimitMiddleware, limits_from_env
 from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.tools import service_desk
 from servicenow_mcp.tools.common.records import register
@@ -83,7 +84,10 @@ def main():
     server = create_remote_server(settings)
     server.run(
         transport="http", host=host, port=port, path="/mcp", show_banner=False,
-        middleware=[Middleware(RequestContextMiddleware)],
+        # Outermost first: every request, including a refused one, gets an ID,
+        # an access line, and metrics.
+        middleware=[Middleware(RequestContextMiddleware),
+                    Middleware(RateLimitMiddleware, limits=limits_from_env())],
         stateless_http=True, json_response=True,
         # OAuth callbacks carry authorization codes in their query string, so
         # uvicorn's access log stays off; the middleware logs one line per

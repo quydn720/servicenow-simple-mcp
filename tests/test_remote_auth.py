@@ -600,3 +600,16 @@ def test_revoke_without_servicenow_call_still_removes_the_grant(settings, monkey
         assert revoke(client, tokens["access_token"], form).status_code == 200
         assert rpc(client, tokens["access_token"], "tools/list").status_code == 401
     assert upstream.revocations == []
+def test_every_remote_tool_matches_its_released_snapshot(remote):
+    import json
+    from pathlib import Path
+    _, server, _ = remote
+    root = Path(__file__).resolve().parents[1] / "docs" / "tool-contracts"
+    tools = asyncio.run(server.list_tools())
+    assert tools
+    for tool in tools:
+        published = tool.to_mcp_tool()
+        folder = root / tool.name / tool.version
+        assert folder.is_dir(), f"{tool.name} {tool.version} has no snapshot; add one before release"
+        assert json.loads((folder / "input.schema.json").read_text()) == published.input_schema, tool.name
+        assert json.loads((folder / "output.schema.json").read_text()) == published.output_schema, tool.name

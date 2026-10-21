@@ -549,8 +549,9 @@ MUST NOT be described as fully compliant merely because this standard exists.
 - All 20 tools now publish explicit field-level input/output schemas and validate
   arguments/results through `tools/contracts.py`. See [implemented contracts](tool-contracts.md).
   Every tool publishes a contract version in `_meta.fastmcp.version`; tools
-  without an explicit version are baselined at 1.0.0. Service-desk tools have
-  specifications and schema snapshots; snapshots for the older common and Agile
+  without an explicit version are baselined at 1.0.0. Service-desk and common
+  tools have specifications and schema snapshots, and every tool on the remote
+  connector is checked against its snapshot in tests; snapshots for the Agile
   tools remain to be introduced. See [service-desk specifications](service-desk-tools.md).
 - IDs, field allowlists, limits, priority choices, and text bounds are validated.
   Instance-specific lengths/choices, identity checks, and permission specifications

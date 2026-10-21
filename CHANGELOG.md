@@ -16,6 +16,14 @@ server releases. Owner: Do Ngoc Quy.
 
 ## [Unreleased]
 
+### Added
+- STRY0013200 (MCP-04): `MCP_ENVIRONMENT` (development, test, production); test
+  and production refuse to start with a secret written in `.env.remote`, no
+  ServiceNow OAuth scope, open dynamic registration, no revocation path, or
+  (production) a tunnel host. `servicenow-mcp-check-remote` validates an
+  environment's ServiceNow access without a sign-in, and
+  `docs/servicenow-access.md` records the integration identity.
+
 ### Breaking
 - The remote server's settings now use the `MCP_` prefix (for example
   `MCP_SERVICENOW_INSTANCE`, `MCP_PUBLIC_URL`, `MCP_SIGNING_KEY`); rename each

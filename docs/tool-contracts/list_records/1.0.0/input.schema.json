@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "table": {
+      "description": "Allowlisted ServiceNow table.",
+      "enum": [
+        "incident",
+        "task",
+        "sc_task",
+        "problem",
+        "change_request"
+      ],
+      "type": "string"
+    },
+    "query": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Legacy argument: only omission or null is permitted. Every string is blocked with RAW_QUERY_PROHIBITED."
+    },
+    "fields": {
+      "anyOf": [
+        {
+          "description": "Nonempty allowlisted field selection; defaults to declared common fields. References are returned as display names.",
+          "items": {
+            "enum": [
+              "sys_id",
+              "number",
+              "short_description",
+              "description",
+              "state",
+              "priority",
+              "assignment_group",
+              "assigned_to",
+              "caller_id",
+              "active",
+              "sys_created_on",
+              "sys_updated_on"
+            ],
+            "type": "string"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Nonempty allowlisted field selection; defaults to declared common fields. References are returned as display names."
+    },
+    "limit": {
+      "default": 10,
+      "description": "Maximum returned records, from 1 to 100; default 10. No pagination.",
+      "maximum": 100,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "table"
+  ],
+  "type": "object",
+  "additionalProperties": false
+}

@@ -1,4 +1,4 @@
-// Scripted REST resource: GET /api/x_mcp_poc/identity/me.
+// Scripted REST resource: GET /api/x_mcp/identity/me.
 // Require authentication at the API AND resource levels. Do not run as admin.
 // Reject guests/inactive users even if a resource was accidentally misconfigured.
 (function process(request, response) {

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,8 +9,8 @@ description = "Feature-based ServiceNow MCP server with local and remote authent
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastmcp==4.0.5",
-    "pydantic>=2.14.1,<3",
+    "fastmcp==4.1.0",
+    "pydantic>=2.12,<3",
     "requests>=2.32.0,<3",
     "python-dotenv>=1.0.1,<2",
 ]
@@ -20,7 +20,7 @@ dashboard = ["Flask>=3.0.0,<4"]
 remote = [
     "httpx2==2.13.0",
     "cryptography==50.0.1",
-    "py-key-value-aio[filetree]==0.4.5",
+    "py-key-value-aio[filetree]==0.4.6",
 ]
 
 [dependency-groups]
@@ -32,6 +32,7 @@ servicenow-mcp-remote = "servicenow_mcp.servers.remote:main"
 servicenow-mcp-dashboard = "servicenow_mcp.dashboard.web:main"
 servicenow-oauth-setup = "servicenow_mcp.cli.oauth_setup:main"
 servicenow-check-incident-states = "servicenow_mcp.cli.check_incident_states:main"
+servicenow-mcp-check-remote = "servicenow_mcp.cli.check_remote:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

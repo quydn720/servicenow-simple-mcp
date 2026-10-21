@@ -6,6 +6,8 @@ from fastmcp import FastMCP
 from mcp import types
 from mcp.shared.exceptions import MCPError
 
+from servicenow_mcp.observability.metrics import record_tool_call
+
 
 class _ToolRequestLogFilter(logging.Filter):
     def filter(self, record):
@@ -24,7 +26,11 @@ class ErrorReportingServer(FastMCP):
             logger.addFilter(_ToolRequestLogFilter())
 
     async def _on_call_tool(self, ctx, params):
-        result = await super()._on_call_tool(ctx, params)
+        try:
+            result = await super()._on_call_tool(ctx, params)
+        except Exception:
+            record_tool_call("unknown", "error", "PROTOCOL_ERROR")
+            raise
         # FastMCP 4.0.5 returns an unstructured tool result for unknown tools.
         # Keep genuine execution errors in results, but use JSON-RPC for lookup
         # failures as required by the project standard. Do not echo the name.
@@ -37,5 +43,11 @@ class ErrorReportingServer(FastMCP):
                 for block in result.content
             )
         ):
+            record_tool_call("unknown", "error", "UNKNOWN_TOOL")
             raise MCPError(code=-32602, message="Unknown or unavailable tool.")
+        if isinstance(result, types.CallToolResult) and result.is_error:
+            code = (result.structured_content or {}).get("code", "")
+            record_tool_call(params.name, "error", code if isinstance(code, str) else "")
+        else:
+            record_tool_call(params.name, "success")
         return result

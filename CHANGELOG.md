@@ -16,6 +16,23 @@ server releases. Owner: Do Ngoc Quy.
 
 ## [Unreleased]
 
+### Added
+- STRY0013200 (MCP-04): `MCP_ENVIRONMENT` (development, test, production); test
+  and production refuse to start with a secret written in `.env.remote`, no
+  ServiceNow OAuth scope, open dynamic registration, no revocation path, or
+  (production) a tunnel host. `servicenow-mcp-check-remote` validates an
+  environment's ServiceNow access without a sign-in, and
+  `docs/servicenow-access.md` records the integration identity.
+
+### Breaking
+- The remote server's settings now use the `MCP_` prefix (for example
+  `MCP_SERVICENOW_INSTANCE`, `MCP_PUBLIC_URL`, `MCP_SIGNING_KEY`); rename each
+  setting in `.env.remote` and in deployment configuration. `MCP_IDENTITY_PATH`
+  is now required, because the identity API's path differs per instance.
+- Renamed: `docs/remote-server.md`, `servicenow/identity_api.js`,
+  `deploy/Caddyfile`; the default token store is `.mcp-tokens`; the server
+  reports its name as `servicenow-remote`.
+
 ## [0.1.0] - 2026-10-19
 
 First tagged release. It covers all work merged to `main` up to PR #6.

@@ -28,9 +28,12 @@ REMOTE_TOOLS = {
 @pytest.fixture
 def settings(tmp_path, request):
     return RemoteSettings(
-        "https://instance.example.com", "https://mcp.example.com", "poc-app",
+        "https://instance.example.com", "https://mcp.example.com", "mcp-app",
         "upstream-secret", "s" * 64, Fernet.generate_key().decode(), (CALLBACK,),
         storage_dir=tmp_path / "tokens", forward_pkce=getattr(request, "param", True),
+        # These tests exercise the OAuth flow through /register; client
+        # approval policy has its own tests below.
+        allow_dynamic_registration=True,
     )
 
 
@@ -42,14 +45,23 @@ class Upstream:
     """Mock ServiceNow's token and identity endpoints, with revocation support."""
     def __init__(self, expect_pkce=True):
         self.revoked = set()
+        self.revocations = []
         self.requests = []
         self.expect_pkce = expect_pkce
 
     def __call__(self, request):
         self.requests.append(request)
+        if request.url.path == "/oauth_revoke_token.do":
+            params = parse_qs(request.content.decode())
+            assert params["client_id"] == ["mcp-app"]
+            assert params["client_secret"] == ["upstream-secret"]
+            token = params["token"][0]
+            self.revocations.append(token)
+            self.revoked.add(token.removeprefix("refresh-").removeprefix("sn-"))
+            return httpx2.Response(200)
         if request.url.path == "/oauth_token.do":
             params = parse_qs(request.content.decode())
-            assert params["client_id"] == ["poc-app"]
+            assert params["client_id"] == ["mcp-app"]
             assert params["client_secret"] == ["upstream-secret"]
             if params["grant_type"] == ["authorization_code"]:
                 user = params["code"][0]
@@ -66,7 +78,7 @@ class Upstream:
             return httpx2.Response(200, json={"access_token": "sn-" + user,
                 "refresh_token": "refresh-" + user, "expires_in": 3600,
                 "refresh_expires_in": 86400, "token_type": "Bearer"})
-        assert request.url.path == "/api/x_mcp_poc/identity/me"
+        assert request.url.path == "/api/x_mcp/identity/me"
         user = request.headers["authorization"].removeprefix("Bearer sn-")
         if user not in ("A", "B") or user in self.revoked:
             return httpx2.Response(401)
@@ -423,7 +435,7 @@ def test_no_shared_fallback_or_write_access(settings, monkeypatch):
     monkeypatch.setattr(module, "get_access_token", lambda: None)
     with pytest.raises(RuntimeError):
         factory()
-    token = AccessToken(token="sn-A", client_id="poc-app", scopes=[], subject=USER_A,
+    token = AccessToken(token="sn-A", client_id="mcp-app", scopes=[], subject=USER_A,
                         claims={"provider": "servicenow", "servicenow_instance": settings.instance})
     monkeypatch.setattr(module, "get_access_token", lambda: token)
     client = factory()
@@ -453,7 +465,8 @@ def test_encrypted_storage_survives_restart(settings):
     {"public_url": "https://mcp.example.com/mcp"}, {"allowed_redirects": ()},
     {"allowed_redirects": ("https://*.example.com/callback",)}, {"signing_key": "short"},
     {"identity_path": "https://evil.example/me"}, {"session_lifetime_seconds": 3599},
-    {"session_lifetime_seconds": 30 * 86400 + 1}])
+    {"session_lifetime_seconds": 30 * 86400 + 1}, {"servicenow_scope": "read,write"},
+    {"servicenow_scope": "x" * 201}, {"servicenow_scope": "scope<script>"}])
 def test_invalid_configuration(settings, changes):
     with pytest.raises(ValueError):
         replace(settings, **changes)
@@ -462,16 +475,16 @@ def test_invalid_configuration(settings, changes):
 @pytest.mark.parametrize("value,expected", [(None, 86400), ("3600", 3600), ("2592000", 2592000)])
 def test_session_lifetime_sets_the_sign_in_length(settings, monkeypatch, value, expected):
     from servicenow_mcp.auth.servicenow_remote import create_auth
-    env = {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
-           "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
-           "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
-           "POC_ALLOWED_REDIRECT_URIS": CALLBACK}
+    env = {"MCP_SERVICENOW_INSTANCE": settings.instance, "MCP_PUBLIC_URL": settings.public_url,
+           "MCP_SERVICENOW_CLIENT_ID": "mcp-app", "MCP_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+           "MCP_SIGNING_KEY": settings.signing_key, "MCP_ENCRYPTION_KEY": settings.encryption_key,
+           "MCP_ALLOWED_REDIRECT_URIS": CALLBACK, "MCP_IDENTITY_PATH": "/api/x_mcp/identity/me"}
     for name, item in env.items():
         monkeypatch.setenv(name, item)
     if value is None:
-        monkeypatch.delenv("POC_SESSION_LIFETIME_SECONDS", raising=False)
+        monkeypatch.delenv("MCP_SESSION_LIFETIME_SECONDS", raising=False)
     else:
-        monkeypatch.setenv("POC_SESSION_LIFETIME_SECONDS", value)
+        monkeypatch.setenv("MCP_SESSION_LIFETIME_SECONDS", value)
     loaded = RemoteSettings.from_env()
     assert loaded.session_lifetime_seconds == expected
     auth = create_auth(loaded, MemoryStore())
@@ -480,10 +493,123 @@ def test_session_lifetime_sets_the_sign_in_length(settings, monkeypatch, value, 
 
 @pytest.mark.parametrize("value", ["1 day", "-5", "3600.5"])
 def test_session_lifetime_must_be_whole_seconds(settings, monkeypatch, value):
-    for name, item in {"POC_SERVICENOW_INSTANCE": settings.instance, "POC_PUBLIC_URL": settings.public_url,
-                       "POC_SERVICENOW_CLIENT_ID": "poc-app", "POC_SERVICENOW_CLIENT_SECRET": "upstream-secret",
-                       "POC_SIGNING_KEY": settings.signing_key, "POC_ENCRYPTION_KEY": settings.encryption_key,
-                       "POC_ALLOWED_REDIRECT_URIS": CALLBACK, "POC_SESSION_LIFETIME_SECONDS": value}.items():
+    for name, item in {"MCP_SERVICENOW_INSTANCE": settings.instance, "MCP_PUBLIC_URL": settings.public_url,
+                       "MCP_SERVICENOW_CLIENT_ID": "mcp-app", "MCP_SERVICENOW_CLIENT_SECRET": "upstream-secret",
+                       "MCP_SIGNING_KEY": settings.signing_key, "MCP_ENCRYPTION_KEY": settings.encryption_key,
+                       "MCP_ALLOWED_REDIRECT_URIS": CALLBACK, "MCP_IDENTITY_PATH": "/api/x_mcp/identity/me", "MCP_SESSION_LIFETIME_SECONDS": value}.items():
         monkeypatch.setenv(name, item)
     with pytest.raises(ValueError):
         RemoteSettings.from_env()
+
+
+@pytest.mark.parametrize("scope", ["", "mcp_read", "mcp_read useraccount"])
+def test_upstream_authorize_requests_only_the_configured_scope(settings, scope):
+    scoped = replace(settings, servicenow_scope=scope)
+    server = create_remote_server(scoped, storage=MemoryStore())
+    app = server.http_app(path="/mcp", stateless_http=True, json_response=True,
+        host_origin_protection=True, allowed_hosts=["mcp.example.com"],
+        allowed_origins=[scoped.public_url])
+    verifier = "v" * 64
+    with TestClient(app, base_url=scoped.public_url, follow_redirects=False) as client:
+        registered = client.post("/register", json={"client_name": "Scope test",
+            "redirect_uris": [CALLBACK], "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"], "token_endpoint_auth_method": "none"})
+        assert registered.status_code == 201, registered.text
+        client_id = registered.json()["client_id"]
+        auth = client.get("/authorize", params={"client_id": client_id, "redirect_uri": CALLBACK,
+            "response_type": "code", "state": "s", "code_challenge": challenge(verifier),
+            "code_challenge_method": "S256", "resource": "https://mcp.example.com/mcp"})
+        consent = client.get(auth.headers["location"])
+        form = {key: re.search(fr'name="{key}" value="([^"]+)"', consent.text)[1]
+                for key in ("txn_id", "csrf_token")}
+        approved = client.post("/consent", data={**form, "action": "approve"})
+    upstream = urlparse(approved.headers["location"])
+    assert upstream.path == "/oauth_auth.do"
+    params = parse_qs(upstream.query)
+    if scope:
+        assert params["scope"] == [scope]
+    else:
+        assert "scope" not in params
+
+
+def revoke(client, token, form):
+    # The MCP SDK's revocation model requires client_secret; public clients send it empty.
+    return client.post("/revoke", data={"token": token, "client_id": form["client_id"], "client_secret": ""})
+
+
+@pytest.mark.parametrize("which", ["access_token", "refresh_token"])
+def test_revoke_ends_the_servicenow_grant_and_mcp_tokens_at_once(remote, which):
+    client, _, upstream = remote
+    tokens_a, form_a = login(client, "A")
+    tokens_b, _ = login(client, "B")
+    assert rpc(client, tokens_a["access_token"], "tools/list").status_code == 200
+
+    assert revoke(client, tokens_a[which], form_a).status_code == 200
+    # Both ServiceNow tokens behind the grant were revoked upstream...
+    assert set(upstream.revocations) == {"refresh-A", "sn-A"}
+    # ...and the MCP access token stops working now, not when it expires.
+    assert rpc(client, tokens_a["access_token"], "tools/list").status_code == 401
+    refreshed = client.post("/token", data={"grant_type": "refresh_token", "client_id": form_a["client_id"],
+                                             "refresh_token": tokens_a["refresh_token"],
+                                             "resource": "https://mcp.example.com/mcp"})
+    assert 400 <= refreshed.status_code < 500
+    # Another user's grant is untouched.
+    assert rpc(client, tokens_b["access_token"], "tools/list").status_code == 200
+
+
+def test_revoking_an_unknown_token_is_accepted_and_touches_nothing(remote):
+    client, _, upstream = remote
+    tokens, form = login(client, "A")
+    assert revoke(client, "not-a-real-token", form).status_code == 200
+    assert upstream.revocations == []
+    assert rpc(client, tokens["access_token"], "tools/list").status_code == 200
+
+
+def test_discovery_advertises_the_revocation_endpoint(remote):
+    client, _, _ = remote
+    metadata = client.get("/.well-known/oauth-authorization-server").json()
+    assert metadata["revocation_endpoint"] == "https://mcp.example.com/revoke"
+
+
+@pytest.mark.parametrize("path", ["oauth_revoke_token.do", "/a/../b", "/x?y", "/x y"])
+def test_invalid_revoke_path_is_rejected(settings, path):
+    with pytest.raises(ValueError):
+        replace(settings, revoke_path=path)
+
+
+def test_revoke_without_servicenow_call_still_removes_the_grant(settings, monkeypatch):
+    from fastmcp.server.auth.oauth_proxy import proxy
+    unchanged = replace(settings, revoke_path="")
+    upstream = Upstream(expect_pkce=unchanged.forward_pkce)
+    transport = httpx2.MockTransport(upstream)
+    original = proxy.AsyncOAuth2Client
+
+    def oauth_client(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result._client = httpx2.AsyncClient(transport=transport)
+        return result
+
+    monkeypatch.setattr(proxy, "AsyncOAuth2Client", oauth_client)
+    server = create_remote_server(unchanged, storage=MemoryStore(),
+                                  http_client=httpx2.AsyncClient(transport=transport))
+    app = server.http_app(path="/mcp", stateless_http=True, json_response=True,
+                          host_origin_protection=True, allowed_hosts=["mcp.example.com"],
+                          allowed_origins=[unchanged.public_url])
+    with TestClient(app, base_url=unchanged.public_url, follow_redirects=False) as client:
+        tokens, form = login(client, "A")
+        assert revoke(client, tokens["access_token"], form).status_code == 200
+        assert rpc(client, tokens["access_token"], "tools/list").status_code == 401
+    assert upstream.revocations == []
+def test_every_remote_tool_matches_its_released_snapshot(remote):
+    import json
+    from pathlib import Path
+    _, server, _ = remote
+    root = Path(__file__).resolve().parents[1] / "docs" / "tool-contracts"
+    tools = asyncio.run(server.list_tools())
+    assert tools
+    for tool in tools:
+        published = tool.to_mcp_tool()
+        folder = root / tool.name / tool.version
+        assert folder.is_dir(), f"{tool.name} {tool.version} has no snapshot; add one before release"
+        assert json.loads((folder / "input.schema.json").read_text()) == published.input_schema, tool.name
+        assert json.loads((folder / "output.schema.json").read_text()) == published.output_schema, tool.name

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "table": {
+      "description": "Allowlisted ServiceNow table.",
+      "enum": [
+        "incident",
+        "task",
+        "sc_task",
+        "problem",
+        "change_request"
+      ],
+      "type": "string"
+    },
+    "sys_id": {
+      "description": "Raw 32-character hexadecimal ServiceNow sys_id; never a display name.",
+      "pattern": "^[0-9a-fA-F]{32}$",
+      "type": "string"
+    },
+    "fields": {
+      "anyOf": [
+        {
+          "description": "Nonempty allowlisted field selection; defaults to declared common fields. References are returned as display names.",
+          "items": {
+            "enum": [
+              "sys_id",
+              "number",
+              "short_description",
+              "description",
+              "state",
+              "priority",
+              "assignment_group",
+              "assigned_to",
+              "caller_id",
+              "active",
+              "sys_created_on",
+              "sys_updated_on"
+            ],
+            "type": "string"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional; null leaves this value unspecified. Nonempty allowlisted field selection; defaults to declared common fields. References are returned as display names."
+    }
+  },
+  "required": [
+    "table",
+    "sys_id"
+  ],
+  "type": "object",
+  "additionalProperties": false
+}

@@ -8,6 +8,7 @@ import requests
 from servicenow_mcp.auth.factory import create_auth_provider
 from servicenow_mcp.config.local import Settings
 from servicenow_mcp.errors import OperationError
+from servicenow_mcp.observability.metrics import record_servicenow_response
 
 
 class ServiceNowClient:
@@ -44,13 +45,7 @@ class ServiceNowClient:
             params["sysparm_display_value"] = "all"
             params["sysparm_exclude_reference_link"] = "false"
         try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json_body,
-                timeout=30,
-            )
+            response = self._send(method, url, params, json_body)
         except requests.ConnectTimeout:
             raise OperationError("TIMEOUT", retryable=method == "GET") from None
         except (
@@ -116,6 +111,22 @@ class ServiceNowClient:
                     self._display_record(record, display_fields) for record in result
                 ]
         return body
+
+    def _send(self, method, url, params, json_body):
+        """Make the HTTP call and count its outcome for monitoring."""
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json_body,
+                timeout=30,
+            )
+        except requests.RequestException:
+            record_servicenow_response(None)
+            raise
+        record_servicenow_response(response.status_code)
+        return response
 
     @staticmethod
     def _display_record(

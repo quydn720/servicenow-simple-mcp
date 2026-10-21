@@ -140,7 +140,8 @@ matches the single-replica constraint below.
 
 ## Constraints
 
-Run exactly one replica until shared token storage is in place: the token store
+One process handles about 65 tool calls/s at 200 ms ServiceNow latency; see
+[performance](performance.md). Run exactly one replica until shared token storage is in place: the token store
 is a file tree on one volume and refresh locking is per process. Keep the
 signing and encryption keys stable across restarts and deploys; changing either
 signs every user out. CI builds the image on every pull request and checks that

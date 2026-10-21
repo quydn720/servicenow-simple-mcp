@@ -166,6 +166,8 @@ secret manager and give it only to the scraper.
 Labels are always bounded: unknown paths become `route="other"`, and no
 metric carries users, search values, or record identifiers.
 
+Each alert links to its section in the [runbooks](runbooks.md).
+
 Example scrape job (job name `servicenow-mcp`, which the alert rules expect):
 
 ```yaml

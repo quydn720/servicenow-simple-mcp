@@ -10,7 +10,7 @@ groups:
         labels: {severity: page}
         annotations:
           summary: "MCP server is not answering metrics scrapes"
-          runbook: "docs/deployment.md#monitoring"
+          runbook: "docs/runbooks.md#broker-outage"
 
       - alert: ServiceNowMCPServerErrors
         expr: |
@@ -20,6 +20,7 @@ groups:
         labels: {severity: page}
         annotations:
           summary: "More than 5% of MCP server requests fail with 5xx"
+          runbook: "docs/runbooks.md#broker-outage"
 
       - alert: ServiceNowMCPSlowToolCalls
         expr: |
@@ -29,6 +30,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "p95 latency of /mcp is above 5 seconds"
+          runbook: "docs/runbooks.md#broker-outage"
 
       - alert: ServiceNowUnavailable
         expr: |
@@ -38,6 +40,7 @@ groups:
         labels: {severity: page}
         annotations:
           summary: "ServiceNow is failing or unreachable from the MCP server"
+          runbook: "docs/runbooks.md#servicenow-outage"
 
       - alert: ServiceNowSignInRejections
         expr: sum(rate(servicenow_identity_checks_total{job="servicenow-mcp",result="rejected"}[15m])) > 0.2
@@ -45,6 +48,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Many sign-in tokens are rejected by ServiceNow (OAuth app, identity API, or revocations)"
+          runbook: "docs/runbooks.md#servicenow-outage"
 
       - alert: ServiceNowMCPToolErrors
         expr: |
@@ -55,6 +59,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "More than 10% of tool calls fail for reasons other than caller input or permissions"
+          runbook: "docs/runbooks.md#broker-outage"
 
       - alert: ServiceNowMCPRegistrationSpike
         expr: sum(rate(mcp_http_requests_total{job="servicenow-mcp",route="/register"}[5m])) > 1
@@ -62,6 +67,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Unusual rate of client registrations; possible abuse"
+          runbook: "docs/runbooks.md#broker-outage"
 
       - alert: ServiceNowMCPRateLimiting
         expr: sum by (group) (rate(mcp_rate_limited_total{job="servicenow-mcp"}[10m])) > 0.1
@@ -69,3 +75,4 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Requests are being refused with 429; check for abuse or limits set too low"
+          runbook: "docs/runbooks.md#broker-outage"

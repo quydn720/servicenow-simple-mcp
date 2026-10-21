@@ -4,6 +4,7 @@ import os
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
+from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from servicenow_mcp.config.environment import load_environment
 from servicenow_mcp.servers.base import ErrorReportingServer
@@ -11,6 +12,7 @@ from key_value.aio.stores.filetree import FileTreeStore
 from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 from servicenow_mcp.auth.servicenow_remote import create_auth, user_client_factory
+from servicenow_mcp.observability.logs import RequestContextMiddleware, configure_logging
 from servicenow_mcp.config.remote import RemoteSettings
 from servicenow_mcp.tools import service_desk
 from servicenow_mcp.tools.common.records import register
@@ -60,16 +62,21 @@ def bind_address() -> tuple[str, int]:
 
 def main():
     load_environment(remote=True)
+    configure_logging()
     settings = RemoteSettings.from_env()
     host, port = bind_address()
     # Single worker, persistent encrypted state. TLS terminates at the proxy.
     os.umask(0o077)
     server = create_remote_server(settings)
     server.run(
-        transport="http", host=host, port=port, path="/mcp",
+        transport="http", host=host, port=port, path="/mcp", show_banner=False,
+        middleware=[Middleware(RequestContextMiddleware)],
         stateless_http=True, json_response=True,
-        # OAuth callbacks include authorization codes in their query string.
-        uvicorn_config={"access_log": False},
+        # OAuth callbacks carry authorization codes in their query string, so
+        # uvicorn's access log stays off; the middleware logs one line per
+        # request without the query. log_config=None keeps uvicorn on the
+        # redacting root handler.
+        uvicorn_config={"access_log": False, "log_config": None},
         host_origin_protection=True,
         # Local health checks use the loopback names; everything else must
         # arrive with the public host name.

@@ -18,7 +18,8 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin mcp 
     && mkdir -p /data && chown 10001:10001 /data && chmod 700 /data
 COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    POC_BIND_HOST=0.0.0.0 POC_BIND_PORT=8000 POC_STORAGE_DIR=/data
+    POC_BIND_HOST=0.0.0.0 POC_BIND_PORT=8000 POC_STORAGE_DIR=/data \
+    FASTMCP_CHECK_FOR_UPDATES=off FASTMCP_ENABLE_RICH_LOGGING=false
 USER 10001:10001
 WORKDIR /data
 EXPOSE 8000

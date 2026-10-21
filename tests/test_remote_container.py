@@ -83,7 +83,7 @@ def test_main_binds_configured_address_and_allows_only_known_hosts(monkeypatch, 
     remote_module.main()
     assert (calls["host"], calls["port"]) == ("0.0.0.0", 9000)
     assert calls["allowed_hosts"] == ["mcp.example.com", "127.0.0.1:9000", "localhost:9000"]
-    assert calls["uvicorn_config"] == {"access_log": False}
+    assert calls["uvicorn_config"] == {"access_log": False, "log_config": None}
 
 
 def test_image_runs_as_non_root_and_ships_no_secrets():

@@ -2,7 +2,7 @@
 
 The remote OAuth broker ships as a container image built from the repository's
 `Dockerfile`. It is platform-neutral: it reads its configuration from
-environment variables, logs to stdout, and keeps its
+environment variables, writes JSON logs to stdout, and keeps its
 encrypted token store on one mounted volume. Owner: Do Ngoc Quy.
 
 ## Image
@@ -44,6 +44,33 @@ loopback names `127.0.0.1:<port>` and `localhost:<port>`.
 - A platform probe that connects to the container's IP must send
   `Host: localhost:8000` (or the public host); otherwise host protection rejects
   it. An exec probe running the same command as the `HEALTHCHECK` also works.
+
+## Logs
+
+The server writes one JSON object per line to stdout, so any platform's log
+collector can ship it. Each line has `time` (UTC), `level`, `logger` and
+`message`. Lines written while handling a request also carry `request_id`;
+incident audit events add an `audit` object, and each request adds one access
+line with an `http` object (`method`, `path`, `status`, `duration_ms`).
+
+| Setting | Values | Default |
+| --- | --- | --- |
+| `POC_LOG_FORMAT` | `json`, or `text` for local reading | `json` |
+| `POC_LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | `INFO` |
+
+- **Request IDs:** a well-formed incoming `X-Request-ID` (8–64 letters, digits,
+  `.`, `_`, `-`) is kept; otherwise one is generated. Every response returns it
+  in `X-Request-ID`, so a user's report can be matched to the log lines.
+- **Redaction:** before anything is written, the server removes bearer and basic
+  credentials, OAuth codes and state, token, secret and password fields, URL
+  query strings, and the authorization codes and transaction IDs that FastMCP's
+  OAuth proxy puts in its own messages. Access lines record the path only,
+  never the query string, and uvicorn's own access log is off.
+- **Third-party loggers:** HTTP client libraries are held at `WARNING`, and
+  FastMCP's OAuth proxy at `INFO` even when `POC_LOG_LEVEL=DEBUG`, because their
+  debug output includes full URLs and authorization codes.
+- The image sets `FASTMCP_CHECK_FOR_UPDATES=off` (no call to PyPI at start-up)
+  and `FASTMCP_ENABLE_RICH_LOGGING=false`.
 
 ## Constraints
 

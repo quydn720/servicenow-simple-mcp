@@ -19,7 +19,7 @@ dependencies = [
 dashboard = ["Flask>=3.0.0,<4"]
 remote = [
     "httpx2==2.13.0",
-    "cryptography==50.0.1",
+    "cryptography==50.0.2",
     "py-key-value-aio[filetree]==0.4.6",
 ]
 
